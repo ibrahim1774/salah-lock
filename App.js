@@ -694,6 +694,13 @@ export default function App() {
             setUnlockedMessage(true);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+            // Mark the current prayer as complete
+            const dateKey = getDateKey(new Date());
+            const currentPrayer = getCurrentPrayer();
+            if (currentPrayer) {
+                togglePrayerCompletion(dateKey, currentPrayer);
+            }
+
             // Auto-hide success message after 3 seconds
             setTimeout(() => {
                 setUnlockedMessage(false);
@@ -760,6 +767,19 @@ export default function App() {
         };
         loadJournal();
     }, []);
+
+    // Load completed prayers from storage
+    useEffect(() => {
+        const loadCompletedPrayers = async () => {
+            try {
+                const saved = await AsyncStorage.getItem('completed_prayers');
+                if (saved) setCompletedPrayers(JSON.parse(saved));
+            } catch (e) {
+                console.error("Load Prayers Error:", e);
+            }
+        };
+        loadCompletedPrayers();
+    }, []);
     useEffect(() => {
         if (screenIndex === 0 && showBeginButton) {
             pulse.value = withRepeat(
@@ -809,18 +829,23 @@ export default function App() {
         setUserData(prev => ({ ...prev, [key]: value }));
     };
 
-    const togglePrayerCompletion = (dateKey, prayerName) => {
+    const togglePrayerCompletion = async (dateKey, prayerName) => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Vibration.vibrate(50);
         setCompletedPrayers(prev => {
             const day = prev[dateKey] || {};
-            return {
+            const updated = {
                 ...prev,
                 [dateKey]: {
                     ...day,
                     [prayerName]: !day[prayerName]
                 }
             };
+            // Persist to AsyncStorage
+            AsyncStorage.setItem('completed_prayers', JSON.stringify(updated)).catch(e => {
+                console.error("Save Prayers Error:", e);
+            });
+            return updated;
         });
     };
 
@@ -866,6 +891,29 @@ export default function App() {
         if (hours === '12') hours = '00';
         if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
         return parseInt(hours, 10) * 60 + parseInt(minutes, 10);
+    }
+
+    // Get the current prayer (the most recent one that has started)
+    function getCurrentPrayer() {
+        const now = currentTime.getHours() * 60 + currentTime.getMinutes();
+        const pTimes = Object.keys(prayerTimes).map(name => ({
+            name,
+            mins: parseTimeToMins(prayerTimes[name].time)
+        })).sort((a, b) => a.mins - b.mins);
+
+        // Find the most recent prayer that has started
+        let current = null;
+        for (let i = pTimes.length - 1; i >= 0; i--) {
+            if (pTimes[i].mins <= now) {
+                current = pTimes[i].name;
+                break;
+            }
+        }
+        // If no prayer has started today yet, return the last prayer (Isha from yesterday context)
+        if (!current) {
+            current = pTimes[pTimes.length - 1].name;
+        }
+        return current;
     }
 
     function findNextPrayer() {
@@ -1056,70 +1104,141 @@ export default function App() {
                     </View>
                 </View>
 
-                {/* Qibla Card */}
-                <Card style={styles.qiblaCard}>
-                    <Text style={styles.qiblaTitle}>Qibla Direction</Text>
-                    <View style={styles.qiblaContent}>
-                        <View style={styles.compassContainer}>
-                            <View style={styles.compassCircle}>
-                                <Ionicons name="navigate" size={30} color={COLORS.accent} style={{ transform: [{ rotate: '45deg' }] }} />
-                            </View>
-                        </View>
-                        <View style={styles.qiblaInfo}>
-                            <Text style={styles.qiblaDirectionText}>58° N</Text>
-                            <TouchableOpacity onPress={() => alert('Qibla details coming soon!')}>
-                                <Text style={styles.qiblaLink}>Tap for details</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </Card>
-
-                {/* Observances */}
-                <View style={styles.observancesSection}>
-                    <Text style={styles.sectionTitle}>This Week's Observances</Text>
-                    <Text style={styles.emptyObservances}>No observances this week</Text>
-                </View>
             </Animated.View>
         );
     }
 
     function renderProgress() {
+        // Calculate real statistics from completedPrayers
+        const calculateStats = () => {
+            let totalPrayers = 0;
+            let currentStreak = 0;
+            let weeklyPrayers = 0;
+
+            const today = new Date();
+            const todayKey = getDateKey(today);
+
+            // Get start of current week (Sunday)
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - today.getDay());
+            const weekStartKey = getDateKey(startOfWeek);
+
+            // Count total prayers and weekly prayers
+            Object.entries(completedPrayers).forEach(([dateKey, prayers]) => {
+                const dayCount = Object.values(prayers).filter(Boolean).length;
+                totalPrayers += dayCount;
+
+                // Check if date is in current week
+                if (dateKey >= weekStartKey && dateKey <= todayKey) {
+                    weeklyPrayers += dayCount;
+                }
+            });
+
+            // Calculate streak (consecutive days with all 5 prayers)
+            let checkDate = new Date(today);
+            while (true) {
+                const dateKey = getDateKey(checkDate);
+                const dayPrayers = completedPrayers[dateKey] || {};
+                const completedCount = Object.values(dayPrayers).filter(Boolean).length;
+
+                if (completedCount === 5) {
+                    currentStreak++;
+                    checkDate.setDate(checkDate.getDate() - 1);
+                } else if (dateKey === todayKey && completedCount > 0) {
+                    // Today is in progress, check yesterday
+                    checkDate.setDate(checkDate.getDate() - 1);
+                } else {
+                    break;
+                }
+            }
+
+            // Calculate weekly percentage (max 35 prayers per week)
+            const maxWeeklyPrayers = 35;
+            const weeklyPercentage = Math.round((weeklyPrayers / maxWeeklyPrayers) * 100);
+
+            return { totalPrayers, currentStreak, weeklyPrayers, weeklyPercentage };
+        };
+
+        const stats = calculateStats();
+
+        // Define weekly milestones
+        const weeklyMilestones = [
+            { id: 'w1', title: 'Getting Started', desc: '10 prayers this week', target: 10, icon: 'flash-outline', color: '#FF9500' },
+            { id: 'w2', title: 'Building Momentum', desc: '21 prayers this week', target: 21, icon: 'trending-up-outline', color: '#FF6B6B' },
+            { id: 'w3', title: 'Almost There', desc: '28 prayers this week', target: 28, icon: 'star-outline', color: '#5856D6' },
+            { id: 'w4', title: 'Perfect Week', desc: '35 prayers this week', target: 35, icon: 'trophy-outline', color: COLORS.accent },
+        ];
+
+        // Define streak milestones (in days with all 5 prayers)
+        const streakMilestones = [
+            { id: 's1', title: '2-Week Warrior', desc: '14-day streak (5 prayers/day)', target: 14, icon: 'flame-outline', color: '#FF9500' },
+            { id: 's2', title: 'Monthly Master', desc: '30-day streak (5 prayers/day)', target: 30, icon: 'medal-outline', color: '#FFD700' },
+            { id: 's3', title: 'Quarterly Champion', desc: '90-day streak (5 prayers/day)', target: 90, icon: 'ribbon-outline', color: '#5856D6' },
+            { id: 's4', title: 'Half-Year Hero', desc: '180-day streak (5 prayers/day)', target: 180, icon: 'diamond-outline', color: COLORS.accent },
+        ];
+
+        const renderMilestone = (milestone, current, isStreak = false) => {
+            const isUnlocked = current >= milestone.target;
+            const progress = Math.min(current / milestone.target, 1);
+
+            return (
+                <Card key={milestone.id} style={[styles.milestoneCard, !isUnlocked && styles.milestoneCardLocked]}>
+                    <View style={[styles.milestoneIconContainer, { backgroundColor: milestone.color + '20' }]}>
+                        <Ionicons name={milestone.icon} size={24} color={milestone.color} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 16 }}>
+                        <Text style={styles.milestoneTitle}>{milestone.title}</Text>
+                        <Text style={styles.milestoneDesc}>{milestone.desc}</Text>
+                        {!isUnlocked && (
+                            <View style={styles.milestoneProgress}>
+                                <View style={styles.milestoneProgressBar}>
+                                    <View style={[styles.milestoneProgressFill, { width: `${progress * 100}%`, backgroundColor: milestone.color }]} />
+                                </View>
+                                <Text style={styles.milestoneProgressText}>
+                                    {current} / {milestone.target} {isStreak ? 'days' : 'prayers'}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                    {isUnlocked ? (
+                        <View style={styles.unlockedBadge}>
+                            <Text style={styles.unlockedBadgeText}>Unlocked</Text>
+                        </View>
+                    ) : (
+                        <Ionicons name="lock-closed-outline" size={20} color={COLORS.tertiaryText} />
+                    )}
+                </Card>
+            );
+        };
+
         return (
             <Animated.View entering={FadeIn} style={styles.dashboardContent}>
                 <Text style={styles.dashTitleMain}>Your Progress</Text>
                 <Card style={styles.progressMainCard}>
-                    <Text style={styles.progressStatCount}><CountUp end={124} duration={2000} /></Text>
+                    <Text style={styles.progressStatCount}><CountUp end={stats.totalPrayers} duration={2000} /></Text>
                     <Text style={styles.progressStatLabel}>TOTAL PRAYERS COMPLETED</Text>
                     <View style={styles.progressMiniStats}>
                         <View style={styles.miniStatItem}>
-                            <Text style={styles.miniStatValue}>12</Text>
+                            <Text style={styles.miniStatValue}>{stats.currentStreak}</Text>
                             <Text style={styles.miniStatLabel}>Day Streak</Text>
                         </View>
                         <View style={styles.miniStatDivider} />
                         <View style={styles.miniStatItem}>
-                            <Text style={styles.miniStatValue}>94%</Text>
+                            <Text style={styles.miniStatValue}>{stats.weeklyPercentage}%</Text>
                             <Text style={styles.miniStatLabel}>This Week</Text>
                         </View>
                     </View>
                 </Card>
 
-                <Text style={styles.sectionTitle}>Milestones</Text>
-                {[
-                    { id: 1, title: 'Early Bird', desc: 'Completed 7 Fajr prayers in a row', icon: 'sunny-outline', color: '#FF9500' },
-                    { id: 2, title: 'Consistent', desc: 'Completed all prayers for 5 days', icon: 'shield-checkmark-outline', color: COLORS.accent },
-                    { id: 3, title: 'Night Owl', desc: 'Completed 10 Isha prayers at home', icon: 'moon-outline', color: '#5856D6' },
-                ].map(m => (
-                    <Card key={m.id} style={styles.milestoneCard}>
-                        <View style={[styles.milestoneIconContainer, { backgroundColor: m.color + '20' }]}>
-                            <Ionicons name={m.icon} size={24} color={m.color} />
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 16 }}>
-                            <Text style={styles.milestoneTitle}>{m.title}</Text>
-                            <Text style={styles.milestoneDesc}>{m.desc}</Text>
-                        </View>
-                        <Ionicons name="checkmark-circle" size={20} color={COLORS.accent} />
-                    </Card>
-                ))}
+                <View style={styles.milestoneSection}>
+                    <Text style={styles.milestoneSectionTitle}>Weekly Milestones</Text>
+                    {weeklyMilestones.map(m => renderMilestone(m, stats.weeklyPrayers, false))}
+                </View>
+
+                <View style={styles.milestoneSection}>
+                    <Text style={styles.milestoneSectionTitle}>Streak Milestones</Text>
+                    {streakMilestones.map(m => renderMilestone(m, stats.currentStreak, true))}
+                </View>
             </Animated.View>
         );
     }
@@ -1512,7 +1631,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={1} total={27} onBack={back} />
+                    <Header current={1} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn.delay(200)}>
                             <Text style={styles.quoteTitle}>
@@ -1535,7 +1654,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={2} total={27} onBack={back} />
+                    <Header current={2} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn} style={styles.illustrationPlaceholder}>
                             <Ionicons name="notifications-outline" size={80} color={COLORS.black} />
@@ -1559,7 +1678,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={3} total={27} onBack={back} />
+                    <Header current={3} total={29} onBack={back} />
                     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
                         <Text style={styles.introSmall}>first things first</Text>
                         <Text style={styles.heading}>what should we call you?</Text>
@@ -1589,7 +1708,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={4} total={27} onBack={back} />
+                    <Header current={4} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>and how old are you?</Text>
                         <View style={styles.optionsContainer}>
@@ -1626,7 +1745,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={5} total={27} onBack={back} />
+                    <Header current={5} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how much time do you spend on your phone daily?</Text>
                         <View style={styles.optionsContainer}>
@@ -1666,7 +1785,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={6} total={27} onBack={back} />
+                    <Header current={6} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn.delay(300)}>
                             <Text style={styles.impactText}>
@@ -1697,7 +1816,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={7} total={27} onBack={back} />
+                    <Header current={7} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how many times do you pray per day?</Text>
                         <View style={styles.frequencyGrid}>
@@ -1738,7 +1857,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={8} total={27} onBack={back} />
+                    <Header current={8} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how many times per day do you want to pray?</Text>
                         <Text style={styles.subheading}>Set a realistic goal for yourself</Text>
@@ -1782,7 +1901,7 @@ export default function App() {
         return (
             <ScreenTransition direction={screenIndex > 8 ? 'forward' : 'back'}>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={9} total={27} onBack={back} />
+                    <Header current={9} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how would you describe your relationship with Allah right now?</Text>
                         <View style={styles.optionsContainer}>
@@ -1816,7 +1935,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={10} total={27} onBack={back} />
+                    <Header current={10} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>what do you want to achieve?</Text>
                         <Text style={styles.subheading}>choose up to 3</Text>
@@ -1848,7 +1967,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={11} total={27} onBack={back} />
+                    <Header current={11} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>what's the biggest obstacle to consistent prayer?</Text>
                         <ScrollView>
@@ -1882,7 +2001,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={12} total={27} onBack={back} />
+                    <Header current={12} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>sometimes, deeper struggles affect our prayer life</Text>
                         <Text style={styles.subheading}>do any of these resonate? (optional)</Text>
@@ -1926,7 +2045,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={13} total={27} onBack={back} />
+                    <Header current={13} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>a different approach</Text>
                         <Text style={styles.approachTitle}>Salah Lock doesn't just remind you to pray.</Text>
@@ -1944,7 +2063,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={14} total={27} onBack={back} />
+                    <Header current={14} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>to personalize your experience</Text>
                         <Text style={styles.heading}>what is your madhab?</Text>
@@ -1981,7 +2100,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={15} total={27} onBack={back} />
+                    <Header current={15} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>to personalize your reminders</Text>
                         <Text style={styles.heading}>how should we address you?</Text>
@@ -2017,7 +2136,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={16} total={27} onBack={back} />
+                    <Header current={16} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>thanks for sharing</Text>
                         <Text style={styles.heading}>here's what we heard</Text>
@@ -2061,7 +2180,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={18} total={27} onBack={back} />
+                    <Header current={18} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>one last thing</Text>
                         <Text style={styles.heading}>how committed are you to building your prayer habit?</Text>
@@ -2103,7 +2222,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={19} total={27} onBack={back} />
+                    <Header current={19} total={29} onBack={back} />
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                         <Text style={[styles.heading, { textAlign: 'center' }]}>it's not about willpower</Text>
                         <Text style={[styles.subheading, { textAlign: 'center' }]}>it's about making space for Allah</Text>
@@ -2199,7 +2318,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={20} total={27} onBack={back} />
+                    <Header current={20} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how it works</Text>
                         <View style={styles.stepCard}>
@@ -2236,7 +2355,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={21} total={27} onBack={back} />
+                    <Header current={21} total={29} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.mockupContainer}>
                             <View style={styles.mockPhone}>
@@ -2262,7 +2381,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={22} total={27} onBack={back} />
+                    <Header current={22} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>to get started, we need two things</Text>
                         <View style={styles.permissionCard}>
@@ -2295,7 +2414,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={23} total={27} onBack={back} />
+                    <Header current={23} total={29} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="location" size={100} color={COLORS.black} />
@@ -2323,7 +2442,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <View style={styles.container}>
-                    <Header current={24} total={27} hideProgress />
+                    <Header current={24} total={29} hideProgress />
                     <ActivityIndicator size="large" color={COLORS.black} />
                     <Text style={styles.loadingText}>Calculating your prayer times...</Text>
                 </View>
@@ -2336,7 +2455,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={25} total={27} onBack={back} />
+                    <Header current={25} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>🕌 North Haven, CT</Text>
                         <Text style={styles.heading}>Your Prayer Times</Text>
@@ -2367,7 +2486,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={26} total={27} onBack={back} />
+                    <Header current={26} total={29} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="shield-checkmark" size={100} color={COLORS.black} />
@@ -2403,7 +2522,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={27} total={27} onBack={back} />
+                    <Header current={27} total={29} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="apps" size={100} color={COLORS.black} />
@@ -2449,8 +2568,82 @@ export default function App() {
         );
     }
 
-    // Screen 28: Final Success
+    // Screen 28: How Prayer Lock Works (Instruction Screen)
     if (!isAppReady && screenIndex === 28) {
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={28} total={29} onBack={back} />
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                        <Text style={styles.heading}>How Prayer Lock Works</Text>
+                        <Text style={styles.subheading}>
+                            Here's how SalahTaqa helps you stay focused during prayer times.
+                        </Text>
+
+                        <View style={styles.instructionCardsContainer}>
+                            <Card style={styles.instructionCard}>
+                                <View style={styles.instructionIconContainer}>
+                                    <Ionicons name="lock-closed" size={28} color={COLORS.accent} />
+                                </View>
+                                <View style={styles.instructionTextContainer}>
+                                    <Text style={styles.instructionTitle}>Apps Lock Automatically</Text>
+                                    <Text style={styles.instructionDescription}>
+                                        During prayer time, your selected apps will be locked and restricted.
+                                    </Text>
+                                </View>
+                            </Card>
+
+                            <Card style={styles.instructionCard}>
+                                <View style={styles.instructionIconContainer}>
+                                    <Ionicons name="checkmark-circle" size={28} color={COLORS.accent} />
+                                </View>
+                                <View style={styles.instructionTextContainer}>
+                                    <Text style={styles.instructionTitle}>Unlock After Prayer</Text>
+                                    <Text style={styles.instructionDescription}>
+                                        To unlock your apps, return to SalahTaqa and tap "I Have Prayed".
+                                    </Text>
+                                </View>
+                            </Card>
+
+                            <Card style={styles.instructionCard}>
+                                <View style={styles.instructionIconContainer}>
+                                    <Ionicons name="list" size={28} color={COLORS.accent} />
+                                </View>
+                                <View style={styles.instructionTextContainer}>
+                                    <Text style={styles.instructionTitle}>Track Your Progress</Text>
+                                    <Text style={styles.instructionDescription}>
+                                        Check off each of the 5 daily prayers, and your progress will be tracked automatically.
+                                    </Text>
+                                </View>
+                            </Card>
+
+                            <Card style={styles.instructionCard}>
+                                <View style={styles.instructionIconContainer}>
+                                    <Ionicons name="trophy" size={28} color="#FF9500" />
+                                </View>
+                                <View style={styles.instructionTextContainer}>
+                                    <Text style={styles.instructionTitle}>Earn Milestones</Text>
+                                    <Text style={styles.instructionDescription}>
+                                        Build streaks and unlock achievements as you maintain your prayer consistency.
+                                    </Text>
+                                </View>
+                            </Card>
+                        </View>
+
+                        <View style={{ height: 20 }} />
+                        <PremiumButton
+                            title="Continue to Dashboard"
+                            onPress={next}
+                        />
+                        <View style={{ height: 40 }} />
+                    </ScrollView>
+                </SafeAreaView>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 29: Final Success
+    if (!isAppReady && screenIndex === 29) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
@@ -2487,7 +2680,7 @@ export default function App() {
     }
 
     // --- DASHBOARD ---
-    if (isAppReady || screenIndex > 28) {
+    if (isAppReady || screenIndex > 29) {
         return (
             <SafeAreaView style={styles.safeContainer}>
                 {isChangingLocation ? (
@@ -4512,5 +4705,85 @@ const styles = StyleSheet.create({
     },
     footerDivider: {
         color: COLORS.tertiaryText,
+    },
+    // Instruction Screen Styles
+    instructionCardsContainer: {
+        marginTop: 30,
+    },
+    instructionCard: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        padding: 20,
+        marginBottom: 16,
+        borderRadius: 20,
+    },
+    instructionIconContainer: {
+        width: 50,
+        height: 50,
+        borderRadius: 16,
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 16,
+    },
+    instructionTextContainer: {
+        flex: 1,
+    },
+    instructionTitle: {
+        fontSize: 17,
+        fontFamily: FONTS.demi,
+        color: COLORS.black,
+        marginBottom: 6,
+    },
+    instructionDescription: {
+        fontSize: 15,
+        fontFamily: FONTS.primary,
+        color: COLORS.secondaryText,
+        lineHeight: 22,
+    },
+    // Milestone Styles for Progress Tab
+    milestoneSection: {
+        marginTop: 30,
+    },
+    milestoneSectionTitle: {
+        fontSize: 16,
+        fontFamily: FONTS.demi,
+        color: COLORS.secondaryText,
+        marginBottom: 16,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    milestoneCardLocked: {
+        opacity: 0.5,
+    },
+    milestoneProgress: {
+        marginTop: 10,
+    },
+    milestoneProgressBar: {
+        height: 6,
+        backgroundColor: COLORS.offWhite,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    milestoneProgressFill: {
+        height: '100%',
+        borderRadius: 3,
+    },
+    milestoneProgressText: {
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        color: COLORS.secondaryText,
+        marginTop: 6,
+    },
+    unlockedBadge: {
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    unlockedBadgeText: {
+        fontSize: 11,
+        fontFamily: FONTS.bold,
+        color: COLORS.accent,
     },
 });
