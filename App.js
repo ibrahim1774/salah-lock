@@ -970,7 +970,7 @@ export default function App() {
             <Animated.View entering={FadeIn} style={styles.dashboardContent}>
                 <View style={styles.dashHeader}>
                     <View>
-                        <Text style={styles.dashTitleMain}>Salah Lock</Text>
+                        <Text style={styles.dashTitleMain}>Salah Taqwa</Text>
                         <Text style={styles.dashSubtitle}>Digital wellness through mindful prayer</Text>
                         <Text style={styles.dashDateText}>{currentTime.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
                     </View>
@@ -1603,7 +1603,7 @@ export default function App() {
                     <Text style={styles.arabicGreeting}>السلام عليكم</Text>
                     <Text style={styles.transliteratedGreeting}>Assalamu Alaikum</Text>
                     <View style={styles.greetingDivider} />
-                    <Text style={styles.logo}>salah lock</Text>
+                    <Text style={styles.logo}>salah taqwa</Text>
                     <Text style={styles.tagline}>A mindful approach to prayer</Text>
                 </Animated.View>
 
@@ -2048,7 +2048,7 @@ export default function App() {
                     <Header current={13} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>a different approach</Text>
-                        <Text style={styles.approachTitle}>Salah Lock doesn't just remind you to pray.</Text>
+                        <Text style={styles.approachTitle}>Salah Taqwa doesn't just remind you to pray.</Text>
                         <Text style={styles.approachTitle}>It creates sacred space by gently removing distractions.</Text>
                         <View style={styles.spacer} />
                         <PremiumButton title="Tell me more" onPress={next} />
@@ -2228,7 +2228,7 @@ export default function App() {
                         <Text style={[styles.subheading, { textAlign: 'center' }]}>it's about making space for Allah</Text>
 
                         <Text style={[styles.subheading, { marginTop: 24 }]}>
-                            The Prophet ﷺ said salah is the first thing we'll be asked about. Each prayer takes just minutes, yet we spend hours on our phones. Salah Lock helps you reclaim that time.
+                            The Prophet ﷺ said salah is the first thing we'll be asked about. Each prayer takes just minutes, yet we spend hours on our phones. Salah Taqwa helps you reclaim that time.
                         </Text>
 
                         <Text style={[styles.sectionHeader, { marginTop: 30 }]}>your first 7 days:</Text>
@@ -2493,7 +2493,7 @@ export default function App() {
                         </View>
                         <Text style={styles.heading}>Enable Screen Time</Text>
                         <Text style={styles.subheading}>
-                            This is required for Salah Lock to pause distracting apps during your prayer times.
+                            This is required for Salah Taqwa to pause distracting apps during your prayer times.
                         </Text>
                         <View style={styles.spacer} />
                         <PremiumButton
