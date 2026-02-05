@@ -2464,7 +2464,7 @@ export default function App() {
                 <SafeAreaView style={styles.safeContainer}>
                     <Header current={19} total={29} onBack={back} />
                     <View style={styles.content}>
-                        <Text style={styles.introSmall}>bonus included</Text>
+                        <Text style={styles.bonusTag}>bonus included</Text>
                         <Text style={styles.heading}>daily spiritual reminders</Text>
                         <Text style={[styles.subheading, { marginTop: 8 }]}>
                             earn extra good deeds in just 30 seconds a day
@@ -3144,6 +3144,19 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.medium,
         color: COLORS.tertiaryText,
         textTransform: 'lowercase',
+    },
+    bonusTag: {
+        fontSize: 16,
+        fontFamily: FONTS.demi,
+        color: COLORS.accent,
+        textTransform: 'uppercase',
+        letterSpacing: 2,
+        backgroundColor: '#E6FAF3',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        overflow: 'hidden',
+        alignSelf: 'flex-start',
     },
     quoteTitle: {
         fontSize: 28,
