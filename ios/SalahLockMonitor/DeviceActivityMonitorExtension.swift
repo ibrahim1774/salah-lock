@@ -48,11 +48,10 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         super.intervalDidEnd(for: activity)
         log("Prayer interval ENDED for \(activity.rawValue)")
 
-        // Clear shields
-        store.shield.applications = nil
-        store.shield.applicationCategories = nil
-        store.shield.webDomainCategories = nil
-        log("Cleared all shields")
+        // DO NOT clear shields here - let user manually unlock via app
+        // The JS layer's handleIHavePrayed() will call testUnblockApps() to unlock
+        // This keeps apps locked until user confirms they have prayed
+        log("Interval ended - shields remain active until user confirms prayer")
     }
 
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {

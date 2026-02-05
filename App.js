@@ -53,6 +53,10 @@ import {
     isPrayerNotificationsEnabled,
     setPrayerNotificationsEnabled,
 } from './utils/prayerNotifications';
+import {
+    isAutoLockEnabled,
+    setAutoLockEnabled,
+} from './utils/prayerTimeLock';
 
 
 const { width, height } = Dimensions.get('window');
@@ -401,6 +405,9 @@ export default function App() {
 
     // Prayer notification state
     const [prayerNotificationsEnabled, setPrayerNotificationsEnabledState] = useState(false);
+
+    // Auto-lock at prayer times state
+    const [autoLockEnabled, setAutoLockEnabledState] = useState(false);
 
     const pulse = useSharedValue(1);
     const pulseStyle = useAnimatedStyle(() => ({
@@ -840,12 +847,15 @@ export default function App() {
         checkExistingSetup();
     }, []);
 
-    // Re-sync schedules when prayer times update
+    // Re-sync schedules when prayer times update or auto-lock is toggled
     useEffect(() => {
-        if (hasScreenTimePermission && isAppsSelected && prayerTimes) {
+        if (hasScreenTimePermission && isAppsSelected && prayerTimes && autoLockEnabled) {
             syncPrayerSchedules();
+        } else if (!autoLockEnabled && SalahLockModule) {
+            // Stop all schedules if auto-lock is disabled
+            SalahLockModule.stopAllSchedules().catch(e => console.error('Error stopping schedules:', e));
         }
-    }, [prayerTimes]);
+    }, [prayerTimes, autoLockEnabled]);
 
     // Initialize daily spiritual reminder on startup
     useEffect(() => {
@@ -896,6 +906,15 @@ export default function App() {
             schedulePrayerNotifications(prayerTimes);
         }
     }, [prayerTimes, prayerNotificationsEnabled]);
+
+    // Load auto-lock preference on startup
+    useEffect(() => {
+        const loadAutoLockPreference = async () => {
+            const enabled = await isAutoLockEnabled();
+            setAutoLockEnabledState(enabled);
+        };
+        loadAutoLockPreference();
+    }, []);
 
     // Generate daily content (Quran verse and dua)
     const generateDailyContent = () => {
@@ -952,6 +971,33 @@ export default function App() {
 
         await setPrayerNotificationsEnabled(newValue);
         setPrayerNotificationsEnabledState(newValue);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
+
+    // Toggle auto-lock at prayer times
+    const toggleAutoLock = async () => {
+        const newValue = !autoLockEnabled;
+
+        if (newValue && !isAppsSelected) {
+            Alert.alert(
+                'Select Apps First',
+                'Please select apps to block before enabling auto-lock.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
+        if (newValue && !hasScreenTimePermission) {
+            Alert.alert(
+                'Permission Required',
+                'Please grant Screen Time permission first.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
+        await setAutoLockEnabled(newValue);
+        setAutoLockEnabledState(newValue);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
@@ -1651,6 +1697,27 @@ export default function App() {
                                 <Ionicons name="play-outline" size={18} color={COLORS.black} />
                                 <Text style={styles.testLockButtonText}>Test Blocking Now</Text>
                             </TouchableOpacity>
+                        </View>
+
+                        {/* Auto-Lock at Prayer Times Toggle */}
+                        <View style={styles.autoLockRow}>
+                            <View style={styles.settingsItemLeftDetailed}>
+                                <View style={styles.settingsIconContainer}>
+                                    <Ionicons name="time-outline" size={20} color={COLORS.black} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingsItemNameDetailed}>Auto-Lock at Prayer Times</Text>
+                                    <Text style={styles.settingsLocationSubtitle}>
+                                        Automatically lock apps when each prayer time arrives
+                                    </Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={autoLockEnabled}
+                                onValueChange={toggleAutoLock}
+                                trackColor={{ false: COLORS.divider, true: COLORS.accent }}
+                                thumbColor={COLORS.white}
+                            />
                         </View>
                     </Card>
                 </View>
@@ -4668,6 +4735,16 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.medium,
         color: COLORS.black,
         marginLeft: 8,
+    },
+    autoLockRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 18,
+        backgroundColor: COLORS.white,
+        marginTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.divider,
     },
     lockedBanner: {
         backgroundColor: COLORS.white,
