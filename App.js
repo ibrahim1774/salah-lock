@@ -780,6 +780,41 @@ export default function App() {
         };
         loadCompletedPrayers();
     }, []);
+
+    // Check and restore Screen Time status on app startup
+    useEffect(() => {
+        const checkExistingSetup = async () => {
+            try {
+                // Check if Screen Time permission was previously granted
+                const permissionStatus = await SalahLockModule.checkScreenTimePermission();
+                const hasPermission = permissionStatus === 'approved';
+                setHasScreenTimePermission(hasPermission);
+
+                // Check if apps were previously selected
+                if (hasPermission) {
+                    const hasApps = await SalahLockModule.hasSelectedApps();
+                    setIsAppsSelected(hasApps);
+
+                    // Auto-sync schedules if everything is set up
+                    if (hasApps) {
+                        await syncPrayerSchedules();
+                        console.log("Auto-synced prayer schedules on startup");
+                    }
+                }
+            } catch (e) {
+                console.error("Startup check error:", e);
+            }
+        };
+        checkExistingSetup();
+    }, []);
+
+    // Re-sync schedules when prayer times update
+    useEffect(() => {
+        if (hasScreenTimePermission && isAppsSelected && prayerTimes) {
+            syncPrayerSchedules();
+        }
+    }, [prayerTimes]);
+
     useEffect(() => {
         if (screenIndex === 0 && showBeginButton) {
             pulse.value = withRepeat(
@@ -796,7 +831,7 @@ export default function App() {
     useEffect(() => {
         let isMounted = true;
         const initPrayerFetch = async () => {
-            if (screenIndex === 24) {
+            if (screenIndex === 23) {
                 // We are on the loading screen, start fetching
                 const success = await fetchPrayerTimesByGPS();
                 if (isMounted) {
@@ -1521,6 +1556,25 @@ export default function App() {
                     </Card>
                 </View>
 
+                {/* Support */}
+                <View style={styles.settingsSection}>
+                    <Text style={styles.settingsSectionTitle}>SUPPORT</Text>
+                    <Card style={styles.settingsSectionCard}>
+                        <TouchableOpacity
+                            style={styles.settingsItemDetailed}
+                            onPress={() => Linking.openURL('https://sites.google.com/view/salahlock/contact-us')}
+                        >
+                            <View style={styles.settingsItemLeftDetailed}>
+                                <View style={styles.settingsIconContainer}>
+                                    <Ionicons name="mail-outline" size={20} color={COLORS.black} />
+                                </View>
+                                <Text style={styles.settingsItemNameDetailed}>Contact Us</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={COLORS.tertiaryText} />
+                        </TouchableOpacity>
+                    </Card>
+                </View>
+
                 {/* Legal */}
                 <View style={styles.settingsSection}>
                     <Text style={styles.settingsSectionTitle}>LEGAL</Text>
@@ -1631,7 +1685,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={1} total={29} onBack={back} />
+                    <Header current={1} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn.delay(200)}>
                             <Text style={styles.quoteTitle}>
@@ -1654,7 +1708,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={2} total={29} onBack={back} />
+                    <Header current={2} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn} style={styles.illustrationPlaceholder}>
                             <Ionicons name="notifications-outline" size={80} color={COLORS.black} />
@@ -1678,7 +1732,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={3} total={29} onBack={back} />
+                    <Header current={3} total={28} onBack={back} />
                     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
                         <Text style={styles.introSmall}>first things first</Text>
                         <Text style={styles.heading}>what should we call you?</Text>
@@ -1708,7 +1762,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={4} total={29} onBack={back} />
+                    <Header current={4} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>and how old are you?</Text>
                         <View style={styles.optionsContainer}>
@@ -1745,7 +1799,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={5} total={29} onBack={back} />
+                    <Header current={5} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how much time do you spend on your phone daily?</Text>
                         <View style={styles.optionsContainer}>
@@ -1785,7 +1839,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={6} total={29} onBack={back} />
+                    <Header current={6} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn.delay(300)}>
                             <Text style={styles.impactText}>
@@ -1816,7 +1870,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={7} total={29} onBack={back} />
+                    <Header current={7} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how many times do you pray per day?</Text>
                         <View style={styles.frequencyGrid}>
@@ -1857,7 +1911,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={8} total={29} onBack={back} />
+                    <Header current={8} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how many times per day do you want to pray?</Text>
                         <Text style={styles.subheading}>Set a realistic goal for yourself</Text>
@@ -1901,7 +1955,7 @@ export default function App() {
         return (
             <ScreenTransition direction={screenIndex > 8 ? 'forward' : 'back'}>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={9} total={29} onBack={back} />
+                    <Header current={9} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how would you describe your relationship with Allah right now?</Text>
                         <View style={styles.optionsContainer}>
@@ -1935,7 +1989,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={10} total={29} onBack={back} />
+                    <Header current={10} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>what do you want to achieve?</Text>
                         <Text style={styles.subheading}>choose up to 3</Text>
@@ -1967,7 +2021,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={11} total={29} onBack={back} />
+                    <Header current={11} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>what's the biggest obstacle to consistent prayer?</Text>
                         <ScrollView>
@@ -2001,7 +2055,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={12} total={29} onBack={back} />
+                    <Header current={12} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>sometimes, deeper struggles affect our prayer life</Text>
                         <Text style={styles.subheading}>do any of these resonate? (optional)</Text>
@@ -2045,7 +2099,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={13} total={29} onBack={back} />
+                    <Header current={13} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>a different approach</Text>
                         <Text style={styles.approachTitle}>Salah Taqwa doesn't just remind you to pray.</Text>
@@ -2063,7 +2117,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={14} total={29} onBack={back} />
+                    <Header current={14} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>to personalize your experience</Text>
                         <Text style={styles.heading}>what is your madhab?</Text>
@@ -2100,7 +2154,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={15} total={29} onBack={back} />
+                    <Header current={15} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>to personalize your reminders</Text>
                         <Text style={styles.heading}>how should we address you?</Text>
@@ -2123,8 +2177,7 @@ export default function App() {
                             ))}
                         </View>
 
-                        <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} />
+                        <PremiumButton title="Continue" onPress={next} style={{ marginTop: 60 }} />
                     </View>
                 </SafeAreaView>
             </ScreenTransition>
@@ -2136,7 +2189,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={16} total={29} onBack={back} />
+                    <Header current={16} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>thanks for sharing</Text>
                         <Text style={styles.heading}>here's what we heard</Text>
@@ -2180,7 +2233,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={18} total={29} onBack={back} />
+                    <Header current={18} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>one last thing</Text>
                         <Text style={styles.heading}>how committed are you to building your prayer habit?</Text>
@@ -2222,61 +2275,63 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={19} total={29} onBack={back} />
-                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                        <Text style={[styles.heading, { textAlign: 'center' }]}>it's not about willpower</Text>
-                        <Text style={[styles.subheading, { textAlign: 'center' }]}>it's about making space for Allah</Text>
+                    <Header current={19} total={28} onBack={back} />
+                    <ScrollView style={[styles.content, { paddingTop: 20 }]} showsVerticalScrollIndicator={false}>
+                        <Text style={[styles.heading, { textAlign: 'center', fontSize: 24 }]}>it's not about willpower</Text>
+                        <Text style={[styles.subheading, { textAlign: 'center', marginTop: 4, fontSize: 14 }]}>it's about making space for Allah</Text>
 
-                        <Text style={[styles.subheading, { marginTop: 24 }]}>
+                        <Text style={[styles.subheading, { marginTop: 10, fontSize: 13, lineHeight: 19 }]}>
                             The Prophet ﷺ said salah is the first thing we'll be asked about. Each prayer takes just minutes, yet we spend hours on our phones. Salah Taqwa helps you reclaim that time.
                         </Text>
 
-                        <Text style={[styles.sectionHeader, { marginTop: 30 }]}>your first 7 days:</Text>
+                        <Text style={[styles.sectionHeader, { marginTop: 12, fontSize: 14 }]}>your first 7 days:</Text>
 
-                        <View style={styles.dayCard}>
-                            <Text style={styles.dayTitle}>Day 1 - Enter the sacred space</Text>
-                            <Text style={styles.dayDesc}>Complete your first prayer lock. Feel the peace of putting Allah first.</Text>
+                        <View style={[styles.dayCard, { paddingVertical: 8, paddingHorizontal: 12, marginBottom: 6 }]}>
+                            <Text style={[styles.dayTitle, { fontSize: 14 }]}>Day 1 - Enter the sacred space</Text>
+                            <Text style={[styles.dayDesc, { fontSize: 12 }]}>Complete your first prayer lock. Feel the peace of putting Allah first.</Text>
                         </View>
 
-                        <View style={styles.dayCard}>
-                            <Text style={styles.dayTitle}>Day 2 - Build the habit</Text>
-                            <Text style={styles.dayDesc}>The lock might feel hard. That's normal. We'll help you push through.</Text>
+                        <View style={[styles.dayCard, { paddingVertical: 8, paddingHorizontal: 12, marginBottom: 6 }]}>
+                            <Text style={[styles.dayTitle, { fontSize: 14 }]}>Day 2 - Build the habit</Text>
+                            <Text style={[styles.dayDesc, { fontSize: 12 }]}>The lock might feel hard. That's normal. We'll help you push through.</Text>
                         </View>
 
-                        <View style={styles.dayCard}>
-                            <Text style={styles.dayTitle}>Day 3 - Find your rhythm</Text>
-                            <Text style={styles.dayDesc}>Guided prompts will help you surrender your worries to Allah.</Text>
+                        <View style={[styles.dayCard, { paddingVertical: 8, paddingHorizontal: 12, marginBottom: 6 }]}>
+                            <Text style={[styles.dayTitle, { fontSize: 14 }]}>Day 3 - Find your rhythm</Text>
+                            <Text style={[styles.dayDesc, { fontSize: 12 }]}>Guided prompts will help you surrender your worries to Allah.</Text>
                         </View>
 
-                        <Text style={[styles.subheading, { marginTop: 20, textAlign: 'center' }]}>
+                        <Text style={[styles.subheading, { marginTop: 6, textAlign: 'center', fontSize: 12 }]}>
                             5 daily prayers = reward of 50. Allah multiplies your good deeds 10x.
                         </Text>
 
-                        <View style={styles.dividerLine} />
+                        <View style={[styles.dividerLine, { marginVertical: 10 }]} />
 
-                        <Text style={[styles.heading, { fontSize: 24, marginTop: 20 }]}>Start your 3-day free trial</Text>
+                        <Text style={[styles.heading, { fontSize: 20, marginTop: 0 }]}>Start your 3-day free trial</Text>
 
-                        <View style={{ marginTop: 20 }}>
-                            <Text style={styles.timelineItem}>📅 Today - Unlock all features: app blocking, personalized plan, streak tracking</Text>
-                            <Text style={styles.timelineItem}>⏰ In 2 days - We'll remind you the trial is ending</Text>
-                            <Text style={styles.timelineItem}>✅ In 3 days - You'll be charged unless you cancel anytime</Text>
+                        <View style={{ marginTop: 8 }}>
+                            <Text style={[styles.timelineItem, { fontSize: 11, marginBottom: 3 }]}>📅 Today - Unlock all features: app blocking, streak tracking</Text>
+                            <Text style={[styles.timelineItem, { fontSize: 11, marginBottom: 3 }]}>⏰ In 2 days - We'll remind you the trial is ending</Text>
+                            <Text style={[styles.timelineItem, { fontSize: 11, marginBottom: 3 }]}>✅ In 3 days - You'll be charged unless you cancel</Text>
                         </View>
 
-                        <View style={styles.planContainer}>
+                        <View style={[styles.planContainer, { marginTop: 10 }]}>
                             <TouchableOpacity
                                 style={[
                                     styles.planCard,
+                                    { paddingVertical: 12 },
                                     userData.selectedPlan === 'monthly' && styles.planCardSelected
                                 ]}
                                 onPress={() => updateData('selectedPlan', 'monthly')}
                             >
-                                <Text style={styles.planLabel}>monthly</Text>
-                                <Text style={styles.planPrice}>$10/month</Text>
+                                <Text style={[styles.planLabel, { fontSize: 13 }]}>monthly</Text>
+                                <Text style={[styles.planPrice, { fontSize: 16 }]}>$10/month</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
                                 style={[
                                     styles.planCard,
+                                    { paddingVertical: 12 },
                                     userData.selectedPlan === 'yearly' && styles.planCardSelected
                                 ]}
                                 onPress={() => updateData('selectedPlan', 'yearly')}
@@ -2284,23 +2339,23 @@ export default function App() {
                                 <View style={styles.trialBadge}>
                                     <Text style={styles.trialBadgeText}>3-day free trial</Text>
                                 </View>
-                                <Text style={styles.planLabel}>yearly</Text>
-                                <Text style={styles.planPrice}>$70/year</Text>
-                                <Text style={styles.planSubtext}>($5.83/month)</Text>
+                                <Text style={[styles.planLabel, { fontSize: 13 }]}>yearly</Text>
+                                <Text style={[styles.planPrice, { fontSize: 16 }]}>$70/year</Text>
+                                <Text style={[styles.planSubtext, { fontSize: 11 }]}>($5.83/month)</Text>
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={styles.privacyNoticeText}>Cancel anytime. No payment due now.</Text>
+                        <Text style={[styles.privacyNoticeText, { marginTop: 6, fontSize: 11 }]}>Cancel anytime. No payment due now.</Text>
 
                         <PremiumButton
                             title="Start my free trial"
                             onPress={next}
-                            style={{ marginTop: 20 }}
+                            style={{ marginTop: 10 }}
                         />
 
-                        <Text style={styles.finePrint}>3 days free, then $70/year. Cancel anytime.</Text>
+                        <Text style={[styles.finePrint, { marginTop: 8 }]}>3 days free, then $70/year. Cancel anytime.</Text>
 
-                        <View style={styles.footerLinks}>
+                        <View style={[styles.footerLinks, { marginTop: 10, marginBottom: 20 }]}>
                             <TouchableOpacity><Text style={styles.footerLink}>Privacy</Text></TouchableOpacity>
                             <Text style={styles.footerDivider}>|</Text>
                             <TouchableOpacity><Text style={styles.footerLink}>Terms</Text></TouchableOpacity>
@@ -2318,7 +2373,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={20} total={29} onBack={back} />
+                    <Header current={20} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how it works</Text>
                         <View style={styles.stepCard}>
@@ -2350,38 +2405,12 @@ export default function App() {
         );
     }
 
-    // Screen 21: Lock Experience
+    // Screen 21: Permission Intro
     if (!isAppReady && screenIndex === 21) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={21} total={29} onBack={back} />
-                    <View style={styles.content}>
-                        <View style={styles.mockupContainer}>
-                            <View style={styles.mockPhone}>
-                                <View style={styles.mockStatus} />
-                                <Ionicons name="lock-closed" size={40} color={COLORS.black} />
-                                <Text style={styles.mockText}>Instagram is paused</Text>
-                                <Text style={styles.mockSubtext}>This time is for Allah</Text>
-                                <View style={styles.mockButton} />
-                            </View>
-                        </View>
-                        <Text style={styles.heading}>At prayer time, selected apps pause for 20 minutes</Text>
-                        <Text style={styles.subheading}>A gentle reminder: this time is for Allah</Text>
-                        <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} />
-                    </View>
-                </SafeAreaView>
-            </ScreenTransition>
-        );
-    }
-
-    // Screen 22: Permission Intro
-    if (!isAppReady && screenIndex === 22) {
-        return (
-            <ScreenTransition>
-                <SafeAreaView style={styles.safeContainer}>
-                    <Header current={22} total={29} onBack={back} />
+                    <Header current={21} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>to get started, we need two things</Text>
                         <View style={styles.permissionCard}>
@@ -2409,12 +2438,12 @@ export default function App() {
         );
     }
 
-    // Screen 23: Location Request
-    if (!isAppReady && screenIndex === 23) {
+    // Screen 22: Location Request
+    if (!isAppReady && screenIndex === 22) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={23} total={29} onBack={back} />
+                    <Header current={22} total={28} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="location" size={100} color={COLORS.black} />
@@ -2437,12 +2466,12 @@ export default function App() {
         );
     }
 
-    // Screen 24: Loading
-    if (!isAppReady && screenIndex === 24) {
+    // Screen 23: Loading
+    if (!isAppReady && screenIndex === 23) {
         return (
             <ScreenTransition>
                 <View style={styles.container}>
-                    <Header current={24} total={29} hideProgress />
+                    <Header current={23} total={28} hideProgress />
                     <ActivityIndicator size="large" color={COLORS.black} />
                     <Text style={styles.loadingText}>Calculating your prayer times...</Text>
                 </View>
@@ -2450,12 +2479,12 @@ export default function App() {
         );
     }
 
-    // Screen 25: Prayer Times
-    if (!isAppReady && screenIndex === 25) {
+    // Screen 24: Prayer Times
+    if (!isAppReady && screenIndex === 24) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={25} total={29} onBack={back} />
+                    <Header current={24} total={28} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>🕌 North Haven, CT</Text>
                         <Text style={styles.heading}>Your Prayer Times</Text>
@@ -2481,12 +2510,12 @@ export default function App() {
         );
     }
 
-    // Screen 26: Screen Time Permission
-    if (!isAppReady && screenIndex === 26) {
+    // Screen 25: Screen Time Permission
+    if (!isAppReady && screenIndex === 25) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={26} total={29} onBack={back} />
+                    <Header current={25} total={28} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="shield-checkmark" size={100} color={COLORS.black} />
@@ -2517,12 +2546,12 @@ export default function App() {
         );
     }
 
-    // Screen 27: App Selection
-    if (!isAppReady && screenIndex === 27) {
+    // Screen 26: App Selection
+    if (!isAppReady && screenIndex === 26) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={27} total={29} onBack={back} />
+                    <Header current={26} total={28} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="apps" size={100} color={COLORS.black} />
@@ -2568,12 +2597,12 @@ export default function App() {
         );
     }
 
-    // Screen 28: How Prayer Lock Works (Instruction Screen)
-    if (!isAppReady && screenIndex === 28) {
+    // Screen 27: How Prayer Lock Works (Instruction Screen)
+    if (!isAppReady && screenIndex === 27) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={28} total={29} onBack={back} />
+                    <Header current={27} total={28} onBack={back} />
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                         <Text style={styles.heading}>How Prayer Lock Works</Text>
                         <Text style={styles.subheading}>
@@ -2642,8 +2671,8 @@ export default function App() {
         );
     }
 
-    // Screen 29: Final Success
-    if (!isAppReady && screenIndex === 29) {
+    // Screen 28: Final Success
+    if (!isAppReady && screenIndex === 28) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
@@ -2680,7 +2709,7 @@ export default function App() {
     }
 
     // --- DASHBOARD ---
-    if (isAppReady || screenIndex > 29) {
+    if (isAppReady || screenIndex > 28) {
         return (
             <SafeAreaView style={styles.safeContainer}>
                 {isChangingLocation ? (
