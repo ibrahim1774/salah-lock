@@ -1017,7 +1017,7 @@ export default function App() {
     useEffect(() => {
         let isMounted = true;
         const initPrayerFetch = async () => {
-            if (screenIndex === 23) {
+            if (screenIndex === 24) {
                 // We are on the loading screen, start fetching
                 const success = await fetchPrayerTimesByGPS();
                 if (isMounted) {
@@ -1939,7 +1939,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={1} total={28} onBack={back} />
+                    <Header current={1} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn.delay(200)}>
                             <Text style={styles.quoteTitle}>
@@ -1962,7 +1962,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={2} total={28} onBack={back} />
+                    <Header current={2} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn} style={styles.illustrationPlaceholder}>
                             <Ionicons name="notifications-outline" size={80} color={COLORS.black} />
@@ -1986,7 +1986,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={3} total={28} onBack={back} />
+                    <Header current={3} total={29} onBack={back} />
                     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
                         <Text style={styles.introSmall}>first things first</Text>
                         <Text style={styles.heading}>what should we call you?</Text>
@@ -2016,7 +2016,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={4} total={28} onBack={back} />
+                    <Header current={4} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>and how old are you?</Text>
                         <View style={styles.optionsContainer}>
@@ -2053,7 +2053,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={5} total={28} onBack={back} />
+                    <Header current={5} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how much time do you spend on your phone daily?</Text>
                         <View style={styles.optionsContainer}>
@@ -2093,7 +2093,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={6} total={28} onBack={back} />
+                    <Header current={6} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn.delay(300)}>
                             <Text style={styles.impactText}>
@@ -2124,7 +2124,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={7} total={28} onBack={back} />
+                    <Header current={7} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how many times do you pray per day?</Text>
                         <View style={styles.frequencyGrid}>
@@ -2165,7 +2165,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={8} total={28} onBack={back} />
+                    <Header current={8} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how many times per day do you want to pray?</Text>
                         <Text style={styles.subheading}>Set a realistic goal for yourself</Text>
@@ -2209,7 +2209,7 @@ export default function App() {
         return (
             <ScreenTransition direction={screenIndex > 8 ? 'forward' : 'back'}>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={9} total={28} onBack={back} />
+                    <Header current={9} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how would you describe your relationship with Allah right now?</Text>
                         <View style={styles.optionsContainer}>
@@ -2243,7 +2243,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={10} total={28} onBack={back} />
+                    <Header current={10} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>what do you want to achieve?</Text>
                         <Text style={styles.subheading}>choose up to 3</Text>
@@ -2275,7 +2275,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={11} total={28} onBack={back} />
+                    <Header current={11} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>what's the biggest obstacle to consistent prayer?</Text>
                         <ScrollView>
@@ -2309,7 +2309,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={12} total={28} onBack={back} />
+                    <Header current={12} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>sometimes, deeper struggles affect our prayer life</Text>
                         <Text style={styles.subheading}>do any of these resonate? (optional)</Text>
@@ -2353,7 +2353,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={13} total={28} onBack={back} />
+                    <Header current={13} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>a different approach</Text>
                         <Text style={styles.approachTitle}>Salah Taqwa doesn't just remind you to pray.</Text>
@@ -2371,7 +2371,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={14} total={28} onBack={back} />
+                    <Header current={14} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>to personalize your experience</Text>
                         <Text style={styles.heading}>what is your madhab?</Text>
@@ -2408,7 +2408,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={15} total={28} onBack={back} />
+                    <Header current={15} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>to personalize your reminders</Text>
                         <Text style={styles.heading}>how should we address you?</Text>
@@ -2443,7 +2443,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={16} total={28} onBack={back} />
+                    <Header current={16} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>thanks for sharing</Text>
                         <Text style={styles.heading}>here's what we heard</Text>
@@ -2487,7 +2487,7 @@ export default function App() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={18} total={28} onBack={back} />
+                    <Header current={18} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>one last thing</Text>
                         <Text style={styles.heading}>how committed are you to building your prayer habit?</Text>
@@ -2524,12 +2524,74 @@ export default function App() {
         );
     }
 
-    // Screen 19: The "Why" Screen with 7-Day Preview & Free Trial
+    // Screen 19: Daily Spiritual Reminders (Bonus Feature)
     if (!isAppReady && screenIndex === 19) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={19} total={28} onBack={back} />
+                    <Header current={19} total={29} onBack={back} />
+                    <View style={styles.content}>
+                        <Text style={styles.introSmall}>bonus included</Text>
+                        <Text style={styles.heading}>daily spiritual reminders</Text>
+                        <Text style={[styles.subheading, { marginTop: 8 }]}>
+                            earn extra good deeds in just 30 seconds a day
+                        </Text>
+
+                        <Text style={[styles.bodyText, { marginTop: 24, marginBottom: 16 }]}>
+                            Each day, you'll receive:
+                        </Text>
+
+                        {/* Card 1: Daily Quran Verse */}
+                        <View style={styles.reminderCard}>
+                            <Text style={styles.reminderEmoji}>📖</Text>
+                            <View style={styles.reminderTextContainer}>
+                                <Text style={styles.reminderTitle}>Daily Quran Verse</Text>
+                                <Text style={styles.reminderDesc}>
+                                    A beautiful ayah with Arabic and English meaning
+                                </Text>
+                            </View>
+                        </View>
+
+                        {/* Card 2: Daily Dua */}
+                        <View style={styles.reminderCard}>
+                            <Text style={styles.reminderEmoji}>🤲</Text>
+                            <View style={styles.reminderTextContainer}>
+                                <Text style={styles.reminderTitle}>Daily Dua</Text>
+                                <Text style={styles.reminderDesc}>
+                                    A powerful supplication for your day
+                                </Text>
+                            </View>
+                        </View>
+
+                        {/* Card 3: Daily Dhikr */}
+                        <View style={styles.reminderCard}>
+                            <Text style={styles.reminderEmoji}>📿</Text>
+                            <View style={styles.reminderTextContainer}>
+                                <Text style={styles.reminderTitle}>Daily Dhikr</Text>
+                                <Text style={styles.reminderDesc}>
+                                    SubhanAllah, Alhamdulillah, Allahu Akbar - 10 times each
+                                </Text>
+                            </View>
+                        </View>
+
+                        <Text style={[styles.finePrint, { marginTop: 24 }]}>
+                            Takes less than 30 seconds. Rewards that last forever.
+                        </Text>
+
+                        <View style={styles.spacer} />
+                        <PremiumButton title="Continue" onPress={next} />
+                    </View>
+                </SafeAreaView>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 20: The "Why" Screen with 7-Day Preview & Free Trial
+    if (!isAppReady && screenIndex === 20) {
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={20} total={29} onBack={back} />
                     <ScrollView style={[styles.content, { paddingTop: 20 }]} showsVerticalScrollIndicator={false}>
                         <Text style={[styles.heading, { textAlign: 'center', fontSize: 24 }]}>it's not about willpower</Text>
                         <Text style={[styles.subheading, { textAlign: 'center', marginTop: 4, fontSize: 14 }]}>it's about making space for Allah</Text>
@@ -2622,12 +2684,12 @@ export default function App() {
         );
     }
 
-    // Screen 20: How It Works
-    if (!isAppReady && screenIndex === 20) {
+    // Screen 21: How It Works
+    if (!isAppReady && screenIndex === 21) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={20} total={28} onBack={back} />
+                    <Header current={21} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how it works</Text>
                         <View style={styles.stepCard}>
@@ -2659,12 +2721,12 @@ export default function App() {
         );
     }
 
-    // Screen 21: Permission Intro
-    if (!isAppReady && screenIndex === 21) {
+    // Screen 22: Permission Intro
+    if (!isAppReady && screenIndex === 22) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={21} total={28} onBack={back} />
+                    <Header current={22} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>to get started, we need two things</Text>
                         <View style={styles.permissionCard}>
@@ -2692,12 +2754,12 @@ export default function App() {
         );
     }
 
-    // Screen 22: Location Request
-    if (!isAppReady && screenIndex === 22) {
+    // Screen 23: Location Request
+    if (!isAppReady && screenIndex === 23) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={22} total={28} onBack={back} />
+                    <Header current={23} total={29} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="location" size={100} color={COLORS.black} />
@@ -2720,12 +2782,12 @@ export default function App() {
         );
     }
 
-    // Screen 23: Loading
-    if (!isAppReady && screenIndex === 23) {
+    // Screen 24: Loading
+    if (!isAppReady && screenIndex === 24) {
         return (
             <ScreenTransition>
                 <View style={styles.container}>
-                    <Header current={23} total={28} hideProgress />
+                    <Header current={24} total={29} hideProgress />
                     <ActivityIndicator size="large" color={COLORS.black} />
                     <Text style={styles.loadingText}>Calculating your prayer times...</Text>
                 </View>
@@ -2733,12 +2795,12 @@ export default function App() {
         );
     }
 
-    // Screen 24: Prayer Times
-    if (!isAppReady && screenIndex === 24) {
+    // Screen 25: Prayer Times
+    if (!isAppReady && screenIndex === 25) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={24} total={28} onBack={back} />
+                    <Header current={25} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>🕌 North Haven, CT</Text>
                         <Text style={styles.heading}>Your Prayer Times</Text>
@@ -2764,12 +2826,12 @@ export default function App() {
         );
     }
 
-    // Screen 25: Screen Time Permission
-    if (!isAppReady && screenIndex === 25) {
+    // Screen 26: Screen Time Permission
+    if (!isAppReady && screenIndex === 26) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={25} total={28} onBack={back} />
+                    <Header current={26} total={29} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="shield-checkmark" size={100} color={COLORS.black} />
@@ -2800,12 +2862,12 @@ export default function App() {
         );
     }
 
-    // Screen 26: App Selection
-    if (!isAppReady && screenIndex === 26) {
+    // Screen 27: App Selection
+    if (!isAppReady && screenIndex === 27) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={26} total={28} onBack={back} />
+                    <Header current={27} total={29} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="apps" size={100} color={COLORS.black} />
@@ -2851,12 +2913,12 @@ export default function App() {
         );
     }
 
-    // Screen 27: How Prayer Lock Works (Instruction Screen)
-    if (!isAppReady && screenIndex === 27) {
+    // Screen 28: How Prayer Lock Works (Instruction Screen)
+    if (!isAppReady && screenIndex === 28) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={27} total={28} onBack={back} />
+                    <Header current={28} total={29} onBack={back} />
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                         <Text style={styles.heading}>How Prayer Lock Works</Text>
                         <Text style={styles.subheading}>
@@ -2925,8 +2987,8 @@ export default function App() {
         );
     }
 
-    // Screen 28: Final Success
-    if (!isAppReady && screenIndex === 28) {
+    // Screen 29: Final Success
+    if (!isAppReady && screenIndex === 29) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
@@ -5031,6 +5093,39 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.primary,
         color: COLORS.secondaryText,
         marginTop: 4,
+    },
+    // Daily Spiritual Reminders screen styles
+    reminderCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.offWhite,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+    },
+    reminderEmoji: {
+        fontSize: 28,
+        marginRight: 14,
+    },
+    reminderTextContainer: {
+        flex: 1,
+    },
+    reminderTitle: {
+        fontSize: 16,
+        fontFamily: FONTS.demi,
+        color: COLORS.black,
+        marginBottom: 4,
+    },
+    reminderDesc: {
+        fontSize: 14,
+        fontFamily: FONTS.primary,
+        color: COLORS.secondaryText,
+        lineHeight: 20,
+    },
+    bodyText: {
+        fontSize: 16,
+        fontFamily: FONTS.primary,
+        color: COLORS.secondaryText,
     },
     dividerLine: {
         height: 1,
