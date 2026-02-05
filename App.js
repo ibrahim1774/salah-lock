@@ -15,6 +15,7 @@ import {
     SafeAreaView,
     ScrollView,
     StyleSheet,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -45,6 +46,13 @@ import {
     setupNotificationResponseHandler,
     formatTime as formatNotificationTime,
 } from './utils/notifications';
+import {
+    requestPrayerNotificationPermissions,
+    schedulePrayerNotifications,
+    cancelPrayerNotifications,
+    isPrayerNotificationsEnabled,
+    setPrayerNotificationsEnabled,
+} from './utils/prayerNotifications';
 
 
 const { width, height } = Dimensions.get('window');
@@ -390,6 +398,9 @@ export default function App() {
     const [todaysDailyContent, setTodaysDailyContent] = useState(null);
     const [isReminderOn, setIsReminderOn] = useState(false);
     const [tempPickerTime, setTempPickerTime] = useState({ hour: 8, minute: 0 });
+
+    // Prayer notification state
+    const [prayerNotificationsEnabled, setPrayerNotificationsEnabledState] = useState(false);
 
     const pulse = useSharedValue(1);
     const pulseStyle = useAnimatedStyle(() => ({
@@ -870,6 +881,22 @@ export default function App() {
         };
     }, []);
 
+    // Load prayer notification preference on startup
+    useEffect(() => {
+        const loadPrayerNotifPreference = async () => {
+            const enabled = await isPrayerNotificationsEnabled();
+            setPrayerNotificationsEnabledState(enabled);
+        };
+        loadPrayerNotifPreference();
+    }, []);
+
+    // Schedule prayer notifications when prayer times change
+    useEffect(() => {
+        if (prayerNotificationsEnabled && prayerTimes) {
+            schedulePrayerNotifications(prayerTimes);
+        }
+    }, [prayerTimes, prayerNotificationsEnabled]);
+
     // Generate daily content (Quran verse and dua)
     const generateDailyContent = () => {
         const verse = getDailyVerse();
@@ -902,6 +929,30 @@ export default function App() {
             setIsReminderOn(true);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
+    };
+
+    // Toggle prayer time notifications on/off
+    const togglePrayerNotifications = async () => {
+        const newValue = !prayerNotificationsEnabled;
+
+        if (newValue) {
+            const hasPermission = await requestPrayerNotificationPermissions();
+            if (!hasPermission) {
+                Alert.alert(
+                    'Notifications Disabled',
+                    'Please enable notifications in Settings to receive prayer time reminders.',
+                    [{ text: 'OK' }]
+                );
+                return;
+            }
+            await schedulePrayerNotifications(prayerTimes);
+        } else {
+            await cancelPrayerNotifications();
+        }
+
+        await setPrayerNotificationsEnabled(newValue);
+        setPrayerNotificationsEnabledState(newValue);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
     useEffect(() => {
@@ -1595,29 +1646,6 @@ export default function App() {
                             </View>
                         </TouchableOpacity>
 
-                        <View style={[styles.settingsItemDetailed, { flexDirection: 'column', alignItems: 'flex-start', paddingVertical: 20 }]}>
-                            <View style={[styles.settingsItemLeftDetailed, { marginBottom: 15, width: '100%' }]}>
-                                <View style={styles.settingsIconContainer}>
-                                    <Ionicons name="timer-outline" size={20} color={COLORS.black} />
-                                </View>
-                                <Text style={styles.settingsItemNameDetailed}>Lock Duration</Text>
-                            </View>
-                            <View style={[styles.durationSelector, { width: '100%', justifyContent: 'space-between', paddingHorizontal: 5 }]}>
-                                {[5, 10, 15, 20].map((d) => (
-                                    <TouchableOpacity
-                                        key={d}
-                                        style={[styles.durationOption, lockDuration === d && styles.durationOptionSelected, { flex: 1, height: 44 }]}
-                                        onPress={() => {
-                                            setLockDuration(d);
-                                            syncPrayerSchedules();
-                                        }}
-                                    >
-                                        <Text style={[styles.durationText, lockDuration === d && styles.durationTextSelected]}>{d}m</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </View>
-
                         <View style={styles.settingsItemDetailed}>
                             <TouchableOpacity style={styles.testLockButton} onPress={handleImmediateLock}>
                                 <Ionicons name="play-outline" size={18} color={COLORS.black} />
@@ -1673,6 +1701,27 @@ export default function App() {
                             </TouchableOpacity>
 
                             {prayerError && <Text style={styles.errorText}>{prayerError}</Text>}
+                        </View>
+
+                        {/* Prayer Notifications Toggle */}
+                        <View style={styles.prayerNotificationRow}>
+                            <View style={styles.settingsItemLeftDetailed}>
+                                <View style={styles.settingsIconContainer}>
+                                    <Ionicons name="notifications-outline" size={20} color={COLORS.black} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingsItemNameDetailed}>Prayer Notifications</Text>
+                                    <Text style={styles.settingsLocationSubtitle}>
+                                        Get notified at each prayer time
+                                    </Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={prayerNotificationsEnabled}
+                                onValueChange={togglePrayerNotifications}
+                                trackColor={{ false: COLORS.divider, true: COLORS.accent }}
+                                thumbColor={COLORS.white}
+                            />
                         </View>
 
                     </Card>
@@ -4096,6 +4145,13 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.white,
         borderBottomWidth: 1,
         borderBottomColor: COLORS.divider,
+    },
+    prayerNotificationRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 18,
+        backgroundColor: COLORS.white,
     },
     gpsButton: {
         backgroundColor: COLORS.black,
