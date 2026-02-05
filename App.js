@@ -9,6 +9,7 @@ import {
     Dimensions,
     KeyboardAvoidingView,
     Linking,
+    Modal,
     NativeModules,
     Platform,
     SafeAreaView,
@@ -33,6 +34,17 @@ import Animated, {
 } from 'react-native-reanimated';
 import LearnNavigator from './components/learn/LearnNavigator';
 import Svg, { Circle } from 'react-native-svg';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import DailySpiritualReminder from './components/DailySpiritualReminder';
+import { getDailyVerse } from './data/quranVerses';
+import { getAllDuas } from './data/duas';
+import {
+    scheduleDailyNotification,
+    getSavedReminderTime,
+    isReminderEnabled,
+    setupNotificationResponseHandler,
+    formatTime as formatNotificationTime,
+} from './utils/notifications';
 
 
 const { width, height } = Dimensions.get('window');
@@ -370,6 +382,15 @@ export default function App() {
     const [lockDuration, setLockDuration] = useState(5); // minutes
     const [isCurrentlyLocked, setIsCurrentlyLocked] = useState(false);
     const [unlockedMessage, setUnlockedMessage] = useState(null);
+
+    // Daily Spiritual Reminder state
+    const [showDailyReminder, setShowDailyReminder] = useState(false);
+    const [dailyReminderTime, setDailyReminderTime] = useState({ hour: 8, minute: 0 });
+    const [showTimePicker, setShowTimePicker] = useState(false);
+    const [todaysDailyContent, setTodaysDailyContent] = useState(null);
+    const [isReminderOn, setIsReminderOn] = useState(false);
+    const [tempPickerTime, setTempPickerTime] = useState({ hour: 8, minute: 0 });
+
     const pulse = useSharedValue(1);
     const pulseStyle = useAnimatedStyle(() => ({
         transform: [{ scale: pulse.value }],
@@ -815,6 +836,74 @@ export default function App() {
         }
     }, [prayerTimes]);
 
+    // Initialize daily spiritual reminder on startup
+    useEffect(() => {
+        const initDailyReminder = async () => {
+            try {
+                // Load saved reminder time
+                const savedTime = await getSavedReminderTime();
+                setDailyReminderTime(savedTime);
+
+                // Check if reminder is enabled
+                const enabled = await isReminderEnabled();
+                setIsReminderOn(enabled);
+
+                // Generate today's content
+                generateDailyContent();
+
+                // Set up notification tap handler
+                const unsubscribe = setupNotificationResponseHandler(() => {
+                    setShowDailyReminder(true);
+                });
+
+                return unsubscribe;
+            } catch (e) {
+                console.error("Daily reminder init error:", e);
+            }
+        };
+
+        const cleanup = initDailyReminder();
+        return () => {
+            if (cleanup && typeof cleanup.then === 'function') {
+                cleanup.then(fn => fn && fn());
+            }
+        };
+    }, []);
+
+    // Generate daily content (Quran verse and dua)
+    const generateDailyContent = () => {
+        const verse = getDailyVerse();
+        const allDuas = getAllDuas();
+        // Get a random dua based on day of year
+        const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
+        const duaIndex = dayOfYear % allDuas.length;
+        const dua = allDuas[duaIndex];
+
+        setTodaysDailyContent({ verse, dua });
+    };
+
+    // Handle time picker change (only updates temp state while picking)
+    const handleReminderTimeChange = (event, selectedDate) => {
+        if (selectedDate) {
+            const hour = selectedDate.getHours();
+            const minute = selectedDate.getMinutes();
+            setTempPickerTime({ hour, minute });
+        }
+    };
+
+    // Confirm the selected time and schedule notification
+    const confirmReminderTime = async () => {
+        setShowTimePicker(false);
+        setDailyReminderTime(tempPickerTime);
+
+        // Schedule the notification
+        const success = await scheduleDailyNotification(tempPickerTime.hour, tempPickerTime.minute);
+        if (success) {
+            setIsReminderOn(true);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+    };
+
     useEffect(() => {
         if (screenIndex === 0 && showBeginButton) {
             pulse.value = withRepeat(
@@ -1038,6 +1127,77 @@ export default function App() {
 
                 {/* Next Prayer Card */}
                 {renderNextPrayerCard()}
+
+                {/* Daily Spiritual Reminder Section */}
+                <View style={styles.reminderSection}>
+                    <View style={styles.reminderHeader}>
+                        <View style={styles.reminderTitleRow}>
+                            <Ionicons name="notifications" size={20} color={COLORS.accent} />
+                            <Text style={styles.reminderTitle}>Daily Spiritual Reminder</Text>
+                        </View>
+                        <Text style={styles.reminderDescription}>
+                            Get daily Quran verse, dua, and dhikr
+                        </Text>
+                    </View>
+                    <TouchableOpacity
+                        style={styles.reminderTimeButton}
+                        onPress={() => {
+                            setTempPickerTime(dailyReminderTime);
+                            setShowTimePicker(true);
+                        }}
+                    >
+                        <View style={styles.reminderTimeInfo}>
+                            <Text style={styles.reminderTimeLabel}>
+                                {isReminderOn ? 'Reminder set for' : 'Set reminder time'}
+                            </Text>
+                            <Text style={styles.reminderTimeValue}>
+                                {formatNotificationTime(dailyReminderTime.hour, dailyReminderTime.minute)}
+                            </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color={COLORS.tertiaryText} />
+                    </TouchableOpacity>
+                    {todaysDailyContent && (
+                        <TouchableOpacity
+                            style={styles.viewReminderButton}
+                            onPress={() => setShowDailyReminder(true)}
+                        >
+                            <Text style={styles.viewReminderText}>View Today's Reminder</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+
+                {/* Time Picker Modal */}
+                <Modal
+                    visible={showTimePicker}
+                    transparent={true}
+                    animationType="slide"
+                    onRequestClose={() => setShowTimePicker(false)}
+                >
+                    <View style={styles.timePickerModalOverlay}>
+                        <View style={styles.timePickerModalContent}>
+                            <View style={styles.timePickerHeader}>
+                                <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                                    <Text style={styles.timePickerCancel}>Cancel</Text>
+                                </TouchableOpacity>
+                                <Text style={styles.timePickerTitle}>Set Reminder Time</Text>
+                                <TouchableOpacity onPress={confirmReminderTime}>
+                                    <Text style={styles.timePickerDone}>Done</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <View style={styles.timePickerContainer}>
+                                <DateTimePicker
+                                    value={new Date(2024, 0, 1, tempPickerTime.hour, tempPickerTime.minute)}
+                                    mode="time"
+                                    is24Hour={false}
+                                    display="spinner"
+                                    onChange={handleReminderTimeChange}
+                                    textColor={COLORS.black}
+                                    style={styles.timePicker}
+                                />
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
 
                 {/* Today's Prayers Section */}
                 <TouchableOpacity
@@ -2726,6 +2886,14 @@ export default function App() {
                         {renderTabBar()}
                     </View>
                 )}
+
+                {/* Daily Spiritual Reminder Full Screen Modal */}
+                {showDailyReminder && todaysDailyContent && (
+                    <DailySpiritualReminder
+                        content={todaysDailyContent}
+                        onDismiss={() => setShowDailyReminder(false)}
+                    />
+                )}
             </SafeAreaView>
         );
     }
@@ -3142,6 +3310,112 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontFamily: FONTS.demi,
         color: COLORS.black,
+    },
+    // Daily Spiritual Reminder styles
+    reminderSection: {
+        backgroundColor: COLORS.offWhite,
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 24,
+    },
+    reminderHeader: {
+        marginBottom: 12,
+    },
+    reminderTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    reminderTitle: {
+        fontSize: 16,
+        fontFamily: FONTS.demi,
+        color: COLORS.black,
+        marginLeft: 8,
+    },
+    reminderDescription: {
+        fontSize: 13,
+        fontFamily: FONTS.primary,
+        color: COLORS.secondaryText,
+    },
+    reminderTimeButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: COLORS.white,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 10,
+    },
+    reminderTimeInfo: {
+        flex: 1,
+    },
+    reminderTimeLabel: {
+        fontSize: 13,
+        fontFamily: FONTS.primary,
+        color: COLORS.secondaryText,
+    },
+    reminderTimeValue: {
+        fontSize: 17,
+        fontFamily: FONTS.demi,
+        color: COLORS.black,
+        marginTop: 2,
+    },
+    viewReminderButton: {
+        backgroundColor: COLORS.black,
+        borderRadius: 12,
+        padding: 14,
+        alignItems: 'center',
+    },
+    viewReminderText: {
+        fontSize: 15,
+        fontFamily: FONTS.demi,
+        color: COLORS.white,
+    },
+    // Time Picker Modal styles
+    timePickerModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'flex-end',
+    },
+    timePickerModalContent: {
+        backgroundColor: COLORS.white,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingBottom: 34,
+    },
+    timePickerHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.divider,
+    },
+    timePickerTitle: {
+        fontSize: 17,
+        fontFamily: FONTS.demi,
+        color: COLORS.black,
+    },
+    timePickerCancel: {
+        fontSize: 17,
+        fontFamily: FONTS.primary,
+        color: COLORS.secondaryText,
+    },
+    timePickerDone: {
+        fontSize: 17,
+        fontFamily: FONTS.demi,
+        color: COLORS.accent,
+    },
+    timePickerContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 20,
+    },
+    timePicker: {
+        width: '100%',
+        height: 200,
+        backgroundColor: COLORS.white,
     },
     sectionAction: {
         fontSize: 14,

@@ -46,7 +46,8 @@
           "locationWhenInUsePermission": "Allow Salah Lock to access your location to provide accurate prayer times."
         }
       ],
-      "expo-build-properties"
+      "expo-build-properties",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "reactCompiler": true
