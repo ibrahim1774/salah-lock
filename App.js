@@ -1277,28 +1277,6 @@ export default function App() {
                     </TouchableOpacity>
                 </Card>
 
-                {/* Calendar Section */}
-                <View style={styles.calendarContainer}>
-                    <View style={styles.calendarHeader}>
-                        <Text style={styles.calendarMonth}>February 2026</Text>
-                        <View style={styles.calendarNav}>
-                            <TouchableOpacity><Ionicons name="chevron-back" size={20} color={COLORS.black} /></TouchableOpacity>
-                            <TouchableOpacity style={{ marginLeft: 20 }}><Ionicons name="chevron-forward" size={20} color={COLORS.black} /></TouchableOpacity>
-                        </View>
-                    </View>
-                    <View style={styles.weekGrid}>
-                        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <Text key={i} style={styles.weekDayLabel}>{d}</Text>)}
-                        {Array.from({ length: 7 }).map((_, i) => (
-                            <View key={i} style={styles.calendarDay}>
-                                <View style={[styles.dayCircleMini, i === 1 && styles.dayCircleActive]}>
-                                    <Text style={[styles.dayTextMini, i === 1 && { color: COLORS.white }]}>{i + 1}</Text>
-                                </View>
-                                {i < 1 && <View style={styles.completionDot} />}
-                            </View>
-                        ))}
-                    </View>
-                </View>
-
             </Animated.View>
         );
     }
