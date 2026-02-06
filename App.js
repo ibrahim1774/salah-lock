@@ -351,8 +351,8 @@ export default function App() {
         name: '',
         ageRange: '',
         phoneUsage: '',
-        prayerFrequency: 5,
-        prayerGoal: 5,
+        prayerFrequency: null,
+        prayerGoal: null,
         prayerDays: [],
         relationshipStatus: '',
         goals: [],
@@ -2148,10 +2148,10 @@ export default function App() {
                             ))}
                         </View>
                         <Text style={styles.supportiveText}>
-                            Current: {userData.prayerFrequency} prayers daily
+                            {userData.prayerFrequency !== null ? `Current: ${userData.prayerFrequency} prayers daily` : 'Select your current prayer count'}
                         </Text>
                         <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} />
+                        <PremiumButton title="Continue" onPress={next} disabled={userData.prayerFrequency === null} />
                     </View>
                 </SafeAreaView>
             </ScreenTransition>
@@ -2191,7 +2191,7 @@ export default function App() {
                             ))}
                         </View>
                         <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} />
+                        <PremiumButton title="Continue" onPress={next} disabled={userData.prayerGoal === null} />
                     </View>
                 </SafeAreaView>
             </ScreenTransition>
@@ -2312,8 +2312,9 @@ export default function App() {
                     <Header current={12} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>sometimes, deeper struggles affect our prayer life</Text>
-                        <Text style={styles.subheading}>do any of these resonate? (optional)</Text>
-                        <ScrollView style={styles.optionsContainer} showsVerticalScrollIndicator={false}>
+                        <Text style={styles.subheading}>do any of these resonate?</Text>
+                        <Text style={styles.scrollHint}>↓ scroll to see all options</Text>
+                        <ScrollView style={styles.optionsContainer} showsVerticalScrollIndicator={true}>
                             {STRUGGLE_OPTIONS.map(opt => (
                                 <TouchableOpacity
                                     key={opt}
@@ -2341,7 +2342,7 @@ export default function App() {
                         </ScrollView>
                         <Text style={styles.privacyNote}>Your responses are private</Text>
                         <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} />
+                        <PremiumButton title="Continue" onPress={next} disabled={userData.deeperStruggles.length === 0} />
                     </View>
                 </SafeAreaView>
             </ScreenTransition>
@@ -2375,7 +2376,7 @@ export default function App() {
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>to personalize your experience</Text>
                         <Text style={styles.heading}>what is your madhab?</Text>
-                        <Text style={styles.subheading}>this helps us show the right prayer times (optional)</Text>
+                        <Text style={styles.subheading}>this helps us show the right prayer times</Text>
 
                         <View style={{ marginTop: 30 }}>
                             {['Hanafi', 'Shafi\'i', 'Maliki', 'Hanbali', 'I don\'t follow a specific madhab'].map((option) => (
@@ -2396,7 +2397,7 @@ export default function App() {
                         </View>
 
                         <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} />
+                        <PremiumButton title="Continue" onPress={next} disabled={!userData.madhab} />
                     </View>
                 </SafeAreaView>
             </ScreenTransition>
@@ -2431,7 +2432,7 @@ export default function App() {
                             ))}
                         </View>
 
-                        <PremiumButton title="Continue" onPress={next} style={{ marginTop: 60 }} />
+                        <PremiumButton title="Continue" onPress={next} disabled={!userData.gender} style={{ marginTop: 60 }} />
                     </View>
                 </SafeAreaView>
             </ScreenTransition>
@@ -2517,7 +2518,7 @@ export default function App() {
                         </View>
 
                         <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} />
+                        <PremiumButton title="Continue" onPress={next} disabled={!userData.commitmentLevel} />
                     </View>
                 </SafeAreaView>
             </ScreenTransition>
@@ -3202,6 +3203,13 @@ const styles = StyleSheet.create({
         color: COLORS.secondaryText,
         marginTop: 15,
         lineHeight: 28,
+    },
+    scrollHint: {
+        fontSize: 13,
+        fontFamily: FONTS.primary,
+        color: COLORS.tertiaryText,
+        textAlign: 'center',
+        marginTop: 8,
     },
     introSmall: {
         fontSize: 14,
