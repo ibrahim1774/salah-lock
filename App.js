@@ -1481,6 +1481,16 @@ export default function App() {
                 </Card>
 
                 <View style={styles.milestoneSection}>
+                    <Text style={styles.milestoneSectionTitle}>Weekly Milestones</Text>
+                    {weeklyMilestones.map(m => renderMilestone(m, stats.weeklyPrayers, false))}
+                </View>
+
+                <View style={styles.milestoneSection}>
+                    <Text style={styles.milestoneSectionTitle}>Streak Milestones</Text>
+                    {streakMilestones.map(m => renderMilestone(m, stats.currentStreak, true))}
+                </View>
+
+                <View style={styles.milestoneSection}>
                     <Text style={styles.milestoneSectionTitle}>Prayer History</Text>
                     {(() => {
                         const days = [];
@@ -1515,16 +1525,6 @@ export default function App() {
                         }
                         return days;
                     })()}
-                </View>
-
-                <View style={styles.milestoneSection}>
-                    <Text style={styles.milestoneSectionTitle}>Weekly Milestones</Text>
-                    {weeklyMilestones.map(m => renderMilestone(m, stats.weeklyPrayers, false))}
-                </View>
-
-                <View style={styles.milestoneSection}>
-                    <Text style={styles.milestoneSectionTitle}>Streak Milestones</Text>
-                    {streakMilestones.map(m => renderMilestone(m, stats.currentStreak, true))}
                 </View>
             </Animated.View>
         );
