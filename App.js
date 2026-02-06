@@ -400,7 +400,7 @@ export default function App() {
     const [tempPickerTime, setTempPickerTime] = useState({ hour: 8, minute: 0 });
 
     // Prayer notification state
-    const [prayerNotificationsEnabled, setPrayerNotificationsEnabledState] = useState(false);
+    const [prayerNotificationsEnabled, setPrayerNotificationsEnabledState] = useState(true);
 
     const pulse = useSharedValue(1);
     const pulseStyle = useAnimatedStyle(() => ({
@@ -929,30 +929,6 @@ export default function App() {
             setIsReminderOn(true);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
-    };
-
-    // Toggle prayer time notifications on/off
-    const togglePrayerNotifications = async () => {
-        const newValue = !prayerNotificationsEnabled;
-
-        if (newValue) {
-            const hasPermission = await requestPrayerNotificationPermissions();
-            if (!hasPermission) {
-                Alert.alert(
-                    'Notifications Disabled',
-                    'Please enable notifications in Settings to receive prayer time reminders.',
-                    [{ text: 'OK' }]
-                );
-                return;
-            }
-            await schedulePrayerNotifications(prayerTimes);
-        } else {
-            await cancelPrayerNotifications();
-        }
-
-        await setPrayerNotificationsEnabled(newValue);
-        setPrayerNotificationsEnabledState(newValue);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
     // Complete onboarding and auto-enable prayer notifications
@@ -1774,27 +1750,6 @@ export default function App() {
                             </TouchableOpacity>
 
                             {prayerError && <Text style={styles.errorText}>{prayerError}</Text>}
-                        </View>
-
-                        {/* Prayer Notifications Toggle */}
-                        <View style={styles.prayerNotificationRow}>
-                            <View style={styles.settingsItemLeftDetailed}>
-                                <View style={styles.settingsIconContainer}>
-                                    <Ionicons name="notifications-outline" size={20} color={COLORS.black} />
-                                </View>
-                                <View>
-                                    <Text style={styles.settingsItemNameDetailed}>Prayer Notifications</Text>
-                                    <Text style={styles.settingsLocationSubtitle}>
-                                        Get notified at each prayer time
-                                    </Text>
-                                </View>
-                            </View>
-                            <Switch
-                                value={prayerNotificationsEnabled}
-                                onValueChange={togglePrayerNotifications}
-                                trackColor={{ false: COLORS.divider, true: COLORS.accent }}
-                                thumbColor={COLORS.white}
-                            />
                         </View>
 
                     </Card>
@@ -4290,13 +4245,6 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.white,
         borderBottomWidth: 1,
         borderBottomColor: COLORS.divider,
-    },
-    prayerNotificationRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 18,
-        backgroundColor: COLORS.white,
     },
     gpsButton: {
         backgroundColor: COLORS.black,
