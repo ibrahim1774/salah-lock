@@ -168,8 +168,11 @@ class SalahLockModule: NSObject {
 
     @objc func schedulePrayerLocks(_ prayerTimes: NSDictionary, duration: Int, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
 
+        print("🕐 Starting prayer schedule sync with duration: \(duration) minutes")
+
         // Clear existing schedules
         activityCenter.stopMonitoring()
+        print("🗑️ Cleared existing schedules")
 
         for (prayerName, timeString) in prayerTimes {
             guard let name = prayerName as? String,
@@ -185,10 +188,13 @@ class SalahLockModule: NSObject {
             startComponents.hour = hour
             startComponents.minute = minute
 
+            // Fix: Handle midnight rollover correctly
             var endComponents = DateComponents()
-            let endMinute = minute + duration
-            endComponents.hour = hour + (endMinute / 60)
-            endComponents.minute = endMinute % 60
+            let totalMinutes = minute + duration
+            let endHour = (hour + totalMinutes / 60) % 24  // Wrap around at midnight
+            let endMin = totalMinutes % 60
+            endComponents.hour = endHour
+            endComponents.minute = endMin
 
             let schedule = DeviceActivitySchedule(
                 intervalStart: startComponents,
@@ -200,11 +206,15 @@ class SalahLockModule: NSObject {
 
             do {
                 try activityCenter.startMonitoring(activityName, during: schedule)
-                print("Scheduled \(name) at \(hour):\(minute) for \(duration) minutes")
+                print("✅ Scheduled \(name): \(hour):\(String(format: "%02d", minute)) -> \(endHour):\(String(format: "%02d", endMin))")
             } catch {
-                print("Failed to schedule \(name): \(error)")
+                print("❌ Failed to schedule \(name): \(error.localizedDescription)")
             }
         }
+
+        // Log all active schedules after sync
+        let activeNames = activityCenter.activities.map { $0.rawValue }
+        print("📋 Active schedules after sync: \(activeNames)")
 
         resolve(true)
     }
@@ -224,6 +234,13 @@ class SalahLockModule: NSObject {
     @objc func clearExtensionLogs(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         userDefaults?.removeObject(forKey: "extensionLogs")
         resolve(true)
+    }
+
+    @objc func getActiveSchedules(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let activities = activityCenter.activities
+        let names = activities.map { $0.rawValue }
+        print("📋 Active schedules: \(names)")
+        resolve(names)
     }
 }
 

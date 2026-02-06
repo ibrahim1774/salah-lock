@@ -27,5 +27,6 @@ RCT_EXTERN_METHOD(stopAllSchedules:(RCTPromiseResolveBlock)resolve rejecter:(RCT
 // Debug Methods
 RCT_EXTERN_METHOD(getExtensionLogs:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(clearExtensionLogs:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(getActiveSchedules:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 
 @end

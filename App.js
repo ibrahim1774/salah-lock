@@ -955,6 +955,21 @@ export default function App() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
+    // Complete onboarding and auto-enable prayer notifications
+    const completeOnboarding = async () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        // Auto-enable prayer notifications
+        const hasPermission = await requestPrayerNotificationPermissions();
+        if (hasPermission && prayerTimes) {
+            await schedulePrayerNotifications(prayerTimes);
+            await setPrayerNotificationsEnabled(true);
+            setPrayerNotificationsEnabledState(true);
+        }
+
+        setIsAppReady(true);
+    };
+
     useEffect(() => {
         if (screenIndex === 0 && showBeginButton) {
             pulse.value = withRepeat(
@@ -2945,10 +2960,7 @@ export default function App() {
                             <View style={styles.spacer} />
                             <PremiumButton
                                 title="Begin Your Journey"
-                                onPress={() => {
-                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                    setIsAppReady(true);
-                                }}
+                                onPress={completeOnboarding}
                             />
                         </Animated.View>
                     </View>
