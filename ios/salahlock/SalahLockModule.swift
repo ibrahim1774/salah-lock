@@ -242,6 +242,40 @@ class SalahLockModule: NSObject {
         print("📋 Active schedules: \(names)")
         resolve(names)
     }
+
+    // Test method: Schedule a single test prayer at a specific time
+    @objc func scheduleTestPrayer(_ hour: Int, minute: Int, duration: Int, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        print("🧪 Scheduling TEST prayer at \(hour):\(String(format: "%02d", minute)) for \(duration) minutes")
+
+        var startComponents = DateComponents()
+        startComponents.hour = hour
+        startComponents.minute = minute
+
+        var endComponents = DateComponents()
+        let totalMinutes = minute + duration
+        let endHour = (hour + totalMinutes / 60) % 24
+        let endMin = totalMinutes % 60
+        endComponents.hour = endHour
+        endComponents.minute = endMin
+
+        let schedule = DeviceActivitySchedule(
+            intervalStart: startComponents,
+            intervalEnd: endComponents,
+            repeats: false
+        )
+
+        let activityName = DeviceActivityName(rawValue: "prayer_Test")
+
+        do {
+            try activityCenter.startMonitoring(activityName, during: schedule)
+            print("✅ TEST scheduled: \(hour):\(String(format: "%02d", minute)) -> \(endHour):\(String(format: "%02d", endMin))")
+            print("📋 Active schedules: \(activityCenter.activities.map { $0.rawValue })")
+            resolve(true)
+        } catch {
+            print("❌ TEST failed: \(error.localizedDescription)")
+            reject("SCHEDULE_ERROR", error.localizedDescription, error)
+        }
+    }
 }
 
 // MARK: - SwiftUI App Picker View

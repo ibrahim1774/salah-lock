@@ -387,7 +387,7 @@ export default function App() {
 
     const [hasScreenTimePermission, setHasScreenTimePermission] = useState(false);
     const [isAppsSelected, setIsAppsSelected] = useState(false);
-    const [lockDuration, setLockDuration] = useState(5); // minutes
+    const [lockDuration, setLockDuration] = useState(15); // minutes (iOS requires minimum 15)
     const [isCurrentlyLocked, setIsCurrentlyLocked] = useState(false);
     const [unlockedMessage, setUnlockedMessage] = useState(null);
 
@@ -1665,6 +1665,27 @@ export default function App() {
                             <TouchableOpacity style={styles.testLockButton} onPress={handleImmediateLock}>
                                 <Ionicons name="play-outline" size={18} color={COLORS.black} />
                                 <Text style={styles.testLockButtonText}>Test Blocking Now</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.settingsItemDetailed}>
+                            <TouchableOpacity style={styles.testLockButton} onPress={async () => {
+                                const now = new Date();
+                                let testHour = now.getHours();
+                                let testMinute = now.getMinutes() + 2;
+                                if (testMinute >= 60) {
+                                    testHour = (testHour + 1) % 24;
+                                    testMinute = testMinute % 60;
+                                }
+                                try {
+                                    await SalahLockModule.scheduleTestPrayer(testHour, testMinute, 15);
+                                    Alert.alert('Test Scheduled', `Auto-lock will trigger at ${testHour}:${String(testMinute).padStart(2, '0')} (for 15 min)`);
+                                } catch (e) {
+                                    Alert.alert('Error', e.message);
+                                }
+                            }}>
+                                <Ionicons name="time-outline" size={18} color={COLORS.black} />
+                                <Text style={styles.testLockButtonText}>Schedule Test (2 min)</Text>
                             </TouchableOpacity>
                         </View>
                     </Card>
