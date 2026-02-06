@@ -1470,6 +1470,43 @@ export default function App() {
                 </Card>
 
                 <View style={styles.milestoneSection}>
+                    <Text style={styles.milestoneSectionTitle}>Prayer History</Text>
+                    {(() => {
+                        const days = [];
+                        const prayerNames = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+                        const today = new Date();
+                        const todayKey = getDateKey(today);
+                        for (let i = 0; i < 7; i++) {
+                            const d = new Date(today);
+                            d.setDate(today.getDate() - i);
+                            const key = getDateKey(d);
+                            const dayPrayers = completedPrayers[key] || {};
+                            const count = Object.values(dayPrayers).filter(Boolean).length;
+                            const label = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'long' });
+                            const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                            days.push(
+                                <Card key={key} style={styles.historyRow}>
+                                    <View style={styles.historyLeft}>
+                                        <Text style={styles.historyDayLabel}>{label}</Text>
+                                        <Text style={styles.historyDate}>{dateStr}</Text>
+                                    </View>
+                                    <View style={styles.historyDots}>
+                                        {prayerNames.map(p => (
+                                            <View key={p} style={[
+                                                styles.historyDot,
+                                                dayPrayers[p] && styles.historyDotCompleted
+                                            ]} />
+                                        ))}
+                                    </View>
+                                    <Text style={[styles.historyCount, count === 5 && { color: COLORS.accent }]}>{count}/5</Text>
+                                </Card>
+                            );
+                        }
+                        return days;
+                    })()}
+                </View>
+
+                <View style={styles.milestoneSection}>
                     <Text style={styles.milestoneSectionTitle}>Weekly Milestones</Text>
                     {weeklyMilestones.map(m => renderMilestone(m, stats.weeklyPrayers, false))}
                 </View>
@@ -5263,5 +5300,49 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontFamily: FONTS.bold,
         color: COLORS.accent,
+    },
+    // Prayer History Styles
+    historyRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 20,
+        marginBottom: 10,
+    },
+    historyLeft: {
+        width: 90,
+    },
+    historyDayLabel: {
+        fontSize: 14,
+        fontFamily: FONTS.demi,
+        color: COLORS.black,
+    },
+    historyDate: {
+        fontSize: 12,
+        fontFamily: FONTS.primary,
+        color: COLORS.tertiaryText,
+        marginTop: 2,
+    },
+    historyDots: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    historyDot: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: COLORS.divider,
+    },
+    historyDotCompleted: {
+        backgroundColor: COLORS.accent,
+    },
+    historyCount: {
+        fontSize: 14,
+        fontFamily: FONTS.demi,
+        color: COLORS.secondaryText,
+        width: 35,
+        textAlign: 'right',
     },
 });
