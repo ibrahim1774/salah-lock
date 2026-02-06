@@ -890,6 +890,17 @@ export default function App() {
         loadPrayerNotifPreference();
     }, []);
 
+    // Check if user has completed onboarding
+    useEffect(() => {
+        const checkOnboarding = async () => {
+            const done = await AsyncStorage.getItem('onboarding_complete');
+            if (done === 'true') {
+                setIsAppReady(true);
+            }
+        };
+        checkOnboarding();
+    }, []);
+
     // Schedule prayer notifications when prayer times change
     useEffect(() => {
         if (prayerNotificationsEnabled && prayerTimes) {
@@ -943,7 +954,31 @@ export default function App() {
             setPrayerNotificationsEnabledState(true);
         }
 
+        await AsyncStorage.setItem('onboarding_complete', 'true');
         setIsAppReady(true);
+    };
+
+    // Reset app to fresh state
+    const handleResetApp = () => {
+        Alert.alert(
+            'Reset App',
+            'This will clear all data and return to the onboarding. Are you sure?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Reset',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await AsyncStorage.clear();
+                        setIsAppReady(false);
+                        setScreenIndex(0);
+                        setCompletedPrayers({});
+                        setJournalEntries([]);
+                        setActiveTab('Home');
+                    }
+                }
+            ]
+        );
     };
 
     useEffect(() => {
@@ -1824,6 +1859,10 @@ export default function App() {
 
                 <TouchableOpacity style={styles.logoutButton}>
                     <Text style={styles.logoutText}>Sign Out</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.resetButton} onPress={handleResetApp}>
+                    <Text style={styles.resetButtonText}>Reset App</Text>
                 </TouchableOpacity>
             </Animated.View>
         );
@@ -4363,6 +4402,17 @@ const styles = StyleSheet.create({
         color: '#FF3B30',
         fontSize: 16,
         fontFamily: FONTS.bold,
+    },
+    resetButton: {
+        alignItems: 'center',
+        paddingVertical: 16,
+        marginTop: 10,
+        marginBottom: 40,
+    },
+    resetButtonText: {
+        fontSize: 14,
+        fontFamily: FONTS.medium,
+        color: '#FF3B30',
     },
     versionText: {
         textAlign: 'center',
