@@ -168,8 +168,8 @@ export const schedulePrayerNotifications = async (prayerTimes) => {
         },
         trigger: {
           type: 'calendar',
-          hour: parsedTime.hour,
-          minute: parsedTime.minute,
+          hour: (parsedTime.hour + Math.floor((parsedTime.minute + 1) / 60)) % 24,
+          minute: (parsedTime.minute + 1) % 60,
           repeats: true,
         },
       });
