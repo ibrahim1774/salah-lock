@@ -37,6 +37,7 @@ import LearnNavigator from './components/learn/LearnNavigator';
 import Svg, { Circle } from 'react-native-svg';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import DailySpiritualReminder from './components/DailySpiritualReminder';
+import SpiritualFlowScreen from './components/SpiritualFlowScreen';
 import { getDailyVerse } from './data/quranVerses';
 import { getAllDuas } from './data/duas';
 import {
@@ -399,6 +400,10 @@ export default function App() {
     const [isReminderOn, setIsReminderOn] = useState(false);
     const [tempPickerTime, setTempPickerTime] = useState({ hour: 8, minute: 0 });
 
+    // Daily Reminder Lock / Spiritual Flow state
+    const [showSpiritualFlow, setShowSpiritualFlow] = useState(false);
+    const [isDailyReminderLock, setIsDailyReminderLock] = useState(false);
+
     // Prayer notification state
     const [prayerNotificationsEnabled, setPrayerNotificationsEnabledState] = useState(true);
 
@@ -722,7 +727,9 @@ export default function App() {
     const handleIHavePrayed = async () => {
         try {
             await SalahLockModule.testUnblockApps();
+            await SalahLockModule.clearLockType();
             setIsCurrentlyLocked(false);
+            setIsDailyReminderLock(false);
             setUnlockedMessage(true);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -739,6 +746,19 @@ export default function App() {
             }, 3000);
         } catch (e) {
             console.error("Unlock Error:", e);
+        }
+    };
+
+    const handleSpiritualFlowComplete = async () => {
+        try {
+            await SalahLockModule.testUnblockApps();
+            await SalahLockModule.clearLockType();
+            setShowSpiritualFlow(false);
+            setIsCurrentlyLocked(false);
+            setIsDailyReminderLock(false);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (e) {
+            console.error("Spiritual Flow Complete Error:", e);
         }
     };
 
@@ -767,6 +787,16 @@ export default function App() {
                     const active = await SalahLockModule.checkIsShieldActive();
                     if (active !== isCurrentlyLocked) {
                         setIsCurrentlyLocked(active);
+                    }
+                    // Check lock type to distinguish prayer vs daily reminder
+                    const lockType = await SalahLockModule.getLockType();
+                    const isReminder = lockType === 'dailyReminder';
+                    if (isReminder !== isDailyReminderLock) {
+                        setIsDailyReminderLock(isReminder);
+                    }
+                    // Auto-show spiritual flow when daily reminder lock is active
+                    if (active && isReminder) {
+                        setShowSpiritualFlow(true);
                     }
                 } catch (e) {
                     console.error("Check Lock Status Error:", e);
@@ -831,6 +861,16 @@ export default function App() {
                     if (hasApps) {
                         await syncPrayerSchedules();
                         console.log("Auto-synced prayer schedules on startup");
+
+                        // Also re-sync daily reminder lock if enabled
+                        const reminderEnabled = await isReminderEnabled();
+                        if (reminderEnabled) {
+                            const savedTime = await getSavedReminderTime();
+                            await SalahLockModule.scheduleDailyReminderLock(
+                                savedTime.hour, savedTime.minute, 60
+                            );
+                            console.log("Auto-synced daily reminder lock on startup");
+                        }
                     }
                 }
             } catch (e) {
@@ -863,7 +903,18 @@ export default function App() {
                 generateDailyContent();
 
                 // Set up notification tap handler
-                const unsubscribe = setupNotificationResponseHandler(() => {
+                const unsubscribe = setupNotificationResponseHandler(async () => {
+                    // Check if daily reminder lock is active
+                    try {
+                        const active = await SalahLockModule.checkIsShieldActive();
+                        const lockType = await SalahLockModule.getLockType();
+                        if (active && lockType === 'dailyReminder') {
+                            setShowSpiritualFlow(true);
+                            return;
+                        }
+                    } catch (e) {
+                        // Fall through to regular reminder
+                    }
                     setShowDailyReminder(true);
                 });
 
@@ -939,6 +990,18 @@ export default function App() {
         if (success) {
             setIsReminderOn(true);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+
+        // Also schedule app lock for daily reminder (separate from prayer locks)
+        if (hasScreenTimePermission && isAppsSelected) {
+            try {
+                await SalahLockModule.scheduleDailyReminderLock(
+                    tempPickerTime.hour, tempPickerTime.minute, 60
+                );
+                console.log("Daily reminder lock scheduled");
+            } catch (e) {
+                console.error("Daily reminder lock schedule error:", e);
+            }
         }
     };
 
@@ -1178,11 +1241,21 @@ export default function App() {
                 </View>
 
                 {/* Locked Banner */}
-                {isCurrentlyLocked && (
+                {isCurrentlyLocked && !isDailyReminderLock && (
                     <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.lockedBanner}>
                         <Text style={styles.lockedBannerText}>Apps are locked for prayer time</Text>
                         <TouchableOpacity style={styles.iHavePrayedButton} onPress={handleIHavePrayed}>
                             <Text style={styles.iHavePrayedButtonText}>I Have Prayed</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                )}
+
+                {/* Daily Reminder Locked Banner */}
+                {isCurrentlyLocked && isDailyReminderLock && !showSpiritualFlow && (
+                    <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.lockedBanner}>
+                        <Text style={styles.lockedBannerText}>Apps are locked for spiritual reminder</Text>
+                        <TouchableOpacity style={styles.iHavePrayedButton} onPress={() => setShowSpiritualFlow(true)}>
+                            <Text style={styles.iHavePrayedButtonText}>Start Spiritual Journey</Text>
                         </TouchableOpacity>
                     </Animated.View>
                 )}
@@ -3046,6 +3119,14 @@ export default function App() {
                     <DailySpiritualReminder
                         content={todaysDailyContent}
                         onDismiss={() => setShowDailyReminder(false)}
+                    />
+                )}
+
+                {/* Spiritual Flow Screen (Daily Reminder Lock) */}
+                {showSpiritualFlow && todaysDailyContent && (
+                    <SpiritualFlowScreen
+                        content={todaysDailyContent}
+                        onComplete={handleSpiritualFlowComplete}
                     />
                 )}
             </SafeAreaView>

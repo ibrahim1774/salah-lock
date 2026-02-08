@@ -10,6 +10,8 @@ import ManagedSettingsUI
 import UIKit
 
 class ShieldConfigurationExtension: ShieldConfigurationDataSource {
+    private let userDefaults = UserDefaults(suiteName: "group.com.ibrahim1774.prayerlock")
+
     override func configuration(shielding application: Application) -> ShieldConfiguration {
         return createShieldConfiguration()
     }
@@ -27,8 +29,33 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     }
 
     private func createShieldConfiguration() -> ShieldConfiguration {
-        let icon = UIImage(systemName: "moon.stars.fill")
+        let lockType = userDefaults?.string(forKey: "lockType") ?? "prayer"
 
+        if lockType == "dailyReminder" {
+            let icon = UIImage(systemName: "book.fill")
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterial,
+                backgroundColor: .white,
+                icon: icon,
+                title: ShieldConfiguration.Label(
+                    text: "Time for Quran, Dua & Dhikr",
+                    color: .black
+                ),
+                subtitle: ShieldConfiguration.Label(
+                    text: "Open Salah Lock to begin your spiritual journey",
+                    color: .gray
+                ),
+                primaryButtonLabel: ShieldConfiguration.Label(
+                    text: "Open Salah Lock",
+                    color: .white
+                ),
+                primaryButtonBackgroundColor: UIColor(red: 0.2, green: 0.7, blue: 0.4, alpha: 1.0),
+                secondaryButtonLabel: nil
+            )
+        }
+
+        // Default: Prayer lock
+        let icon = UIImage(systemName: "moon.stars.fill")
         return ShieldConfiguration(
             backgroundBlurStyle: .systemUltraThinMaterial,
             backgroundColor: .white,

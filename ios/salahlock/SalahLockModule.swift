@@ -170,9 +170,12 @@ class SalahLockModule: NSObject {
 
         print("🕐 Starting prayer schedule sync with duration: \(duration) minutes")
 
-        // Clear existing schedules
-        activityCenter.stopMonitoring()
-        print("🗑️ Cleared existing schedules")
+        // Clear only prayer schedules (preserve daily reminder)
+        let prayerActivities = activityCenter.activities.filter { $0.rawValue.hasPrefix("prayer_") }
+        if !prayerActivities.isEmpty {
+            activityCenter.stopMonitoring(Array(prayerActivities))
+        }
+        print("🗑️ Cleared prayer schedules")
 
         for (prayerName, timeString) in prayerTimes {
             guard let name = prayerName as? String,
@@ -221,6 +224,69 @@ class SalahLockModule: NSObject {
 
     @objc func stopAllSchedules(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         activityCenter.stopMonitoring()
+        resolve(true)
+    }
+
+    // MARK: - Daily Reminder Scheduling
+
+    @objc func scheduleDailyReminderLock(_ hour: Int, minute: Int, duration: Int, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        print("🔔 Scheduling daily reminder lock at \(hour):\(String(format: "%02d", minute)) for \(duration) minutes")
+
+        // Cancel existing daily reminder schedule
+        let reminderActivities = activityCenter.activities.filter { $0.rawValue.hasPrefix("dailyReminder") }
+        if !reminderActivities.isEmpty {
+            activityCenter.stopMonitoring(Array(reminderActivities))
+        }
+
+        var startComponents = DateComponents()
+        startComponents.hour = hour
+        startComponents.minute = minute
+
+        var endComponents = DateComponents()
+        let totalMinutes = minute + duration
+        let endHour = (hour + totalMinutes / 60) % 24
+        let endMin = totalMinutes % 60
+        endComponents.hour = endHour
+        endComponents.minute = endMin
+
+        let schedule = DeviceActivitySchedule(
+            intervalStart: startComponents,
+            intervalEnd: endComponents,
+            repeats: true
+        )
+
+        let activityName = DeviceActivityName(rawValue: "dailyReminder")
+
+        do {
+            try activityCenter.startMonitoring(activityName, during: schedule)
+            print("✅ Daily reminder scheduled: \(hour):\(String(format: "%02d", minute)) -> \(endHour):\(String(format: "%02d", endMin))")
+            resolve(true)
+        } catch {
+            print("❌ Failed to schedule daily reminder: \(error.localizedDescription)")
+            reject("SCHEDULE_ERROR", error.localizedDescription, error)
+        }
+    }
+
+    @objc func cancelDailyReminderLock(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let reminderActivities = activityCenter.activities.filter { $0.rawValue.hasPrefix("dailyReminder") }
+        if !reminderActivities.isEmpty {
+            activityCenter.stopMonitoring(Array(reminderActivities))
+        }
+        // Clear stale lockType if it was daily reminder
+        if userDefaults?.string(forKey: "lockType") == "dailyReminder" {
+            userDefaults?.removeObject(forKey: "lockType")
+        }
+        print("🔕 Daily reminder lock cancelled")
+        resolve(true)
+    }
+
+    @objc func getLockType(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let lockType = userDefaults?.string(forKey: "lockType")
+        resolve(lockType as Any)
+    }
+
+    @objc func clearLockType(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        userDefaults?.removeObject(forKey: "lockType")
         resolve(true)
     }
 

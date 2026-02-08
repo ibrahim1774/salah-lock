@@ -26,7 +26,16 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
-        log("Prayer interval STARTED for \(activity.rawValue)")
+        log("Interval STARTED for \(activity.rawValue)")
+
+        // Tag lock type for shield configuration
+        if activity.rawValue.hasPrefix("dailyReminder") {
+            userDefaults?.set("dailyReminder", forKey: "lockType")
+            log("Set lockType to dailyReminder")
+        } else {
+            userDefaults?.set("prayer", forKey: "lockType")
+            log("Set lockType to prayer")
+        }
 
         // Load saved app selection and apply shields
         if let data = userDefaults?.data(forKey: "selectedApps") {
