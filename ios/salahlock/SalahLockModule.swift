@@ -186,14 +186,15 @@ class SalahLockModule: NSObject {
                   let hour = Int(components[0]),
                   let minute = Int(components[1]) else { continue }
 
-            // Create schedule for this prayer
+            // Create schedule for this prayer (+1 min offset to compensate for iOS early triggering)
+            let adjustedMinute = minute + 1
             var startComponents = DateComponents()
-            startComponents.hour = hour
-            startComponents.minute = minute
+            startComponents.hour = (hour + adjustedMinute / 60) % 24
+            startComponents.minute = adjustedMinute % 60
 
-            // Fix: Handle midnight rollover correctly
+            // Handle midnight rollover correctly
             var endComponents = DateComponents()
-            let totalMinutes = minute + duration
+            let totalMinutes = minute + 1 + duration
             let endHour = (hour + totalMinutes / 60) % 24  // Wrap around at midnight
             let endMin = totalMinutes % 60
             endComponents.hour = endHour
