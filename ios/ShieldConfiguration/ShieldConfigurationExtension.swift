@@ -42,11 +42,11 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
                     color: .black
                 ),
                 subtitle: ShieldConfiguration.Label(
-                    text: "Open Salah Lock to begin your spiritual journey",
+                    text: "Open Salah Taqwa to begin your spiritual journey",
                     color: .gray
                 ),
                 primaryButtonLabel: ShieldConfiguration.Label(
-                    text: "Open Salah Lock",
+                    text: "Open Salah Taqwa",
                     color: .white
                 ),
                 primaryButtonBackgroundColor: UIColor(red: 0.2, green: 0.7, blue: 0.4, alpha: 1.0),
