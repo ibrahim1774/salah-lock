@@ -359,8 +359,7 @@ export default function App() {
         goals: [],
         challenges: [],
         deeperStruggles: [],
-        madhab: '',
-        gender: '',
+        dhikrBelief: '',
         commitmentLevel: '',
         selectedPlan: 'yearly',
     });
@@ -375,8 +374,8 @@ export default function App() {
     const [expandedEntryId, setExpandedEntryId] = useState(null);
 
     // --- LOCATION & PRAYER TIMES STATE ---
-    const [prayerTimes, setPrayerTimes] = useState(PRAYER_TIMES);
-    const [location, setLocation] = useState('New York');
+    const [prayerTimes, setPrayerTimes] = useState(null);
+    const [location, setLocation] = useState('');
     const [locationMode, setLocationMode] = useState('manual'); // 'gps' or 'manual'
     const [cityQuery, setCityQuery] = useState('');
     const [citySuggestions, setCitySuggestions] = useState([]);
@@ -679,7 +678,7 @@ export default function App() {
     };
 
     const syncPrayerSchedules = async () => {
-        if (!hasScreenTimePermission || !isAppsSelected) return;
+        if (!hasScreenTimePermission || !isAppsSelected || !prayerTimes) return;
 
         try {
             // Convert prayer times to "HH:mm" 24h format for the native scheduler
@@ -857,10 +856,10 @@ export default function App() {
                     const hasApps = await SalahLockModule.hasSelectedApps();
                     setIsAppsSelected(hasApps);
 
-                    // Auto-sync schedules if everything is set up
+                    // Auto-fetch real prayer times and sync schedules on startup
                     if (hasApps) {
-                        await syncPrayerSchedules();
-                        console.log("Auto-synced prayer schedules on startup");
+                        await fetchPrayerTimesByGPS();
+                        console.log("Auto-fetched prayer times on startup");
 
                         // Also re-sync daily reminder lock if enabled
                         const reminderEnabled = await isReminderEnabled();
@@ -1032,12 +1031,26 @@ export default function App() {
                     text: 'Reset',
                     style: 'destructive',
                     onPress: async () => {
+                        // Stop all DeviceActivity schedules (prayer + daily reminder locks)
+                        try { await SalahLockModule.stopAllSchedules(); } catch (e) {}
+                        // Clear any active shields
+                        try { await SalahLockModule.testUnblockApps(); } catch (e) {}
+                        // Cancel all scheduled prayer notifications
+                        try { await cancelPrayerNotifications(); } catch (e) {}
+
+                        // Clear all persisted data
                         await AsyncStorage.clear();
+
+                        // Reset all in-memory state
                         setIsAppReady(false);
                         setScreenIndex(0);
                         setCompletedPrayers({});
                         setJournalEntries([]);
                         setActiveTab('Home');
+                        setHasScreenTimePermission(false);
+                        setLocationMode('manual');
+                        setLocation('');
+                        setPrayerTimes(null);
                     }
                 }
             ]
@@ -1159,6 +1172,7 @@ export default function App() {
 
     // Get the current prayer (the most recent one that has started)
     function getCurrentPrayer() {
+        if (!prayerTimes) return null;
         const now = currentTime.getHours() * 60 + currentTime.getMinutes();
         const pTimes = Object.keys(prayerTimes).map(name => ({
             name,
@@ -1181,6 +1195,7 @@ export default function App() {
     }
 
     function findNextPrayer() {
+        if (!prayerTimes) return null;
         const now = currentTime.getHours() * 60 + currentTime.getMinutes();
         const pTimes = Object.keys(prayerTimes).map(name => ({
             name,
@@ -1276,7 +1291,7 @@ export default function App() {
                 )}
 
                 {/* Next Prayer Card */}
-                {renderNextPrayerCard()}
+                {prayerTimes && renderNextPrayerCard()}
 
                 {/* Daily Spiritual Reminder Section */}
                 <View style={styles.reminderSection}>
@@ -1369,7 +1384,7 @@ export default function App() {
                                 <Ionicons name="arrow-forward-circle-outline" size={28} color={COLORS.black} />
                             </TouchableOpacity>
                         </View>
-                        {Object.entries(prayerTimes).map(([name, data]) => {
+                        {prayerTimes && Object.entries(prayerTimes).map(([name, data]) => {
                             const isCompleted = completedPrayers[dateKey]?.[name];
                             return (
                                 <View key={name} style={[styles.prayerCardDetailed, isCompleted && { opacity: 0.6 }]}>
@@ -1789,26 +1804,7 @@ export default function App() {
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.settingsItemDetailed}>
-                            <TouchableOpacity style={styles.testLockButton} onPress={async () => {
-                                const now = new Date();
-                                let testHour = now.getHours();
-                                let testMinute = now.getMinutes() + 2;
-                                if (testMinute >= 60) {
-                                    testHour = (testHour + 1) % 24;
-                                    testMinute = testMinute % 60;
-                                }
-                                try {
-                                    await SalahLockModule.scheduleTestPrayer(testHour, testMinute, 15);
-                                    Alert.alert('Test Scheduled', `Auto-lock will trigger at ${testHour}:${String(testMinute).padStart(2, '0')} (for 15 min)`);
-                                } catch (e) {
-                                    Alert.alert('Error', e.message);
-                                }
-                            }}>
-                                <Ionicons name="time-outline" size={18} color={COLORS.black} />
-                                <Text style={styles.testLockButtonText}>Schedule Test (2 min)</Text>
-                            </TouchableOpacity>
-                        </View>
+
                     </Card>
                 </View>
 
@@ -2440,84 +2436,12 @@ export default function App() {
         );
     }
 
-    // Screen 14: Madhab Selection
+    // Screen 14: Journey Summary
     if (!isAppReady && screenIndex === 14) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
                     <Header current={14} total={29} onBack={back} />
-                    <View style={styles.content}>
-                        <Text style={styles.introSmall}>to personalize your experience</Text>
-                        <Text style={styles.heading}>what is your madhab?</Text>
-                        <Text style={styles.subheading}>this helps us show the right prayer times</Text>
-
-                        <View style={{ marginTop: 30 }}>
-                            {['Hanafi', 'Shafi\'i', 'Maliki', 'Hanbali', 'I don\'t follow a specific madhab'].map((option) => (
-                                <TouchableOpacity
-                                    key={option}
-                                    style={[
-                                        styles.optionButton,
-                                        userData.madhab === option && styles.optionButtonSelected
-                                    ]}
-                                    onPress={() => updateData('madhab', option)}
-                                >
-                                    <Text style={[
-                                        styles.optionText,
-                                        userData.madhab === option && styles.optionTextSelected
-                                    ]}>{option}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} disabled={!userData.madhab} />
-                    </View>
-                </SafeAreaView>
-            </ScreenTransition>
-        );
-    }
-
-    // Screen 15: Gender Selection
-    if (!isAppReady && screenIndex === 15) {
-        return (
-            <ScreenTransition>
-                <SafeAreaView style={styles.safeContainer}>
-                    <Header current={15} total={29} onBack={back} />
-                    <View style={styles.content}>
-                        <Text style={styles.introSmall}>to personalize your reminders</Text>
-                        <Text style={styles.heading}>how should we address you?</Text>
-
-                        <View style={{ marginTop: 40 }}>
-                            {['Brother', 'Sister'].map((option) => (
-                                <TouchableOpacity
-                                    key={option}
-                                    style={[
-                                        styles.optionButton,
-                                        userData.gender === option && styles.optionButtonSelected
-                                    ]}
-                                    onPress={() => updateData('gender', option)}
-                                >
-                                    <Text style={[
-                                        styles.optionText,
-                                        userData.gender === option && styles.optionTextSelected
-                                    ]}>{option}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        <PremiumButton title="Continue" onPress={next} disabled={!userData.gender} style={{ marginTop: 60 }} />
-                    </View>
-                </SafeAreaView>
-            </ScreenTransition>
-        );
-    }
-
-    // Screen 16: Journey Summary
-    if (!isAppReady && screenIndex === 16) {
-        return (
-            <ScreenTransition>
-                <SafeAreaView style={styles.safeContainer}>
-                    <Header current={16} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>thanks for sharing</Text>
                         <Text style={styles.heading}>here's what we heard</Text>
@@ -2551,59 +2475,57 @@ export default function App() {
         );
     }
 
-    // Screen 17: Loading/Building Screen
-    if (!isAppReady && screenIndex === 17) {
+    // Screen 15: Loading/Building Screen
+    if (!isAppReady && screenIndex === 15) {
         return <LoadingBuildScreen onComplete={next} styles={styles} />;
     }
 
-    // Screen 18: Commitment Question
-    if (!isAppReady && screenIndex === 18) {
+    // Screen 16: Daily Dhikr Habit Question
+    if (!isAppReady && screenIndex === 16) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={18} total={29} onBack={back} />
+                    <Header current={16} total={29} onBack={back} />
                     <View style={styles.content}>
-                        <Text style={styles.introSmall}>one last thing</Text>
-                        <Text style={styles.heading}>how committed are you to building your prayer habit?</Text>
+                        <Text style={styles.heading}>do you believe small daily habits can lead to big rewards?</Text>
+                        <Text style={styles.subheading}>saying a few words of dhikr each day takes seconds but builds a lasting connection with Allah</Text>
+
+                        <Text style={[styles.bodyText, { marginTop: 24, fontStyle: 'italic' }]}>
+                            The Prophet ﷺ said: "The most beloved deeds to Allah are those done consistently, even if they are small."
+                        </Text>
 
                         <View style={{ marginTop: 30 }}>
-                            {[
-                                { emoji: '🔥', label: 'Extremely committed' },
-                                { emoji: '💪', label: 'Very committed' },
-                                { emoji: '🤔', label: 'Somewhat committed' },
-                                { emoji: '🌱', label: 'A little committed' },
-                                { emoji: '✨', label: 'Just exploring' },
-                            ].map((option) => (
+                            {['Yes, small habits make a big difference', 'I\'m not sure, but I\'m open to trying'].map((option) => (
                                 <TouchableOpacity
-                                    key={option.label}
+                                    key={option}
                                     style={[
                                         styles.optionButton,
-                                        userData.commitmentLevel === option.label && styles.optionButtonSelected
+                                        userData.dhikrBelief === option && styles.optionButtonSelected
                                     ]}
-                                    onPress={() => updateData('commitmentLevel', option.label)}
+                                    onPress={() => updateData('dhikrBelief', option)}
                                 >
                                     <Text style={[
                                         styles.optionText,
-                                        userData.commitmentLevel === option.label && styles.optionTextSelected
-                                    ]}>{option.emoji} {option.label}</Text>
+                                        userData.dhikrBelief === option && styles.optionTextSelected
+                                    ]}>{option}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
 
                         <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} disabled={!userData.commitmentLevel} />
+                        <PremiumButton title="Continue" onPress={next} disabled={!userData.dhikrBelief} />
                     </View>
                 </SafeAreaView>
             </ScreenTransition>
         );
     }
 
-    // Screen 19: Daily Spiritual Reminders (Bonus Feature)
-    if (!isAppReady && screenIndex === 19) {
+    // Screen 17: Daily Spiritual Reminders (Bonus Feature)
+    if (!isAppReady && screenIndex === 17) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={19} total={29} onBack={back} />
+                    <Header current={17} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.bonusTag}>bonus included</Text>
                         <Text style={styles.heading}>daily spiritual reminders</Text>
@@ -2648,8 +2570,100 @@ export default function App() {
                             </View>
                         </View>
 
-                        <Text style={[styles.finePrint, { marginTop: 24 }]}>
+                        <Text style={[styles.bodyText, { marginTop: 20 }]}>
+                            Your phone locks once a day until you complete your remembrance — making it easy to stay consistent.
+                        </Text>
+
+                        <Text style={[styles.finePrint, { marginTop: 16 }]}>
                             Takes less than 30 seconds. Rewards that last forever.
+                        </Text>
+
+                        <View style={styles.spacer} />
+                        <PremiumButton title="Continue" onPress={next} />
+                    </View>
+                </SafeAreaView>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 18: Commitment Question
+    if (!isAppReady && screenIndex === 18) {
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={18} total={29} onBack={back} />
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                        <Text style={styles.introSmall}>one last thing</Text>
+                        <Text style={styles.heading}>how committed are you to building your prayer habit?</Text>
+
+                        <View style={{ marginTop: 30 }}>
+                            {[
+                                { emoji: '🔥', label: 'Extremely committed' },
+                                { emoji: '💪', label: 'Very committed' },
+                                { emoji: '🤔', label: 'Somewhat committed' },
+                                { emoji: '🌱', label: 'A little committed' },
+                                { emoji: '✨', label: 'Just exploring' },
+                            ].map((option) => (
+                                <TouchableOpacity
+                                    key={option.label}
+                                    style={[
+                                        styles.optionButton,
+                                        userData.commitmentLevel === option.label && styles.optionButtonSelected
+                                    ]}
+                                    onPress={() => updateData('commitmentLevel', option.label)}
+                                >
+                                    <Text style={[
+                                        styles.optionText,
+                                        userData.commitmentLevel === option.label && styles.optionTextSelected
+                                    ]}>{option.emoji} {option.label}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <PremiumButton title="Continue" onPress={next} disabled={!userData.commitmentLevel} style={{ marginTop: 30, marginBottom: 40 }} />
+                    </ScrollView>
+                </SafeAreaView>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 19: Daily Habits Bonus Feature
+    if (!isAppReady && screenIndex === 19) {
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={19} total={29} onBack={back} />
+                    <View style={styles.content}>
+                        <Text style={styles.introSmall}>here's how salah taqwa works</Text>
+                        <Text style={styles.heading}>we can help you build habits that bring you closer to Allah</Text>
+                        <Text style={[styles.bodyText, { marginTop: 16 }]}>
+                            Salah Taqwa locks your apps at prayer time so the app can help you try to not miss a prayer, and once a day for a quick moment of dhikr, dua, and Quran.
+                        </Text>
+
+                        <View style={{ marginTop: 20 }}>
+                            <View style={styles.reminderCard}>
+                                <Text style={styles.reminderEmoji}>🕌</Text>
+                                <View style={styles.reminderTextContainer}>
+                                    <Text style={styles.reminderTitle}>Prayer Lock</Text>
+                                    <Text style={styles.reminderDesc}>
+                                        Your apps lock at each prayer time. Unlock by confirming you've prayed. Never miss a salah again.
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.reminderCard}>
+                                <Text style={styles.reminderEmoji}>📿</Text>
+                                <View style={styles.reminderTextContainer}>
+                                    <Text style={styles.reminderTitle}>Daily Dhikr Lock</Text>
+                                    <Text style={styles.reminderDesc}>
+                                        Once a day at your chosen time, your phone locks until you read Quran, make dua, and say your dhikr. Takes less than 2 minutes.
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        <Text style={[styles.subheading, { marginTop: 20, fontStyle: 'italic', textAlign: 'center' }]}>
+                            These small daily moments add up. Imagine the rewards after a month, a year, a lifetime.
                         </Text>
 
                         <View style={styles.spacer} />
@@ -2879,7 +2893,7 @@ export default function App() {
                         <Text style={styles.introSmall}>🕌 North Haven, CT</Text>
                         <Text style={styles.heading}>Your Prayer Times</Text>
                         <ScrollView showsVerticalScrollIndicator={false}>
-                            {Object.entries(prayerTimes).map(([name, data]) => (
+                            {prayerTimes && Object.entries(prayerTimes).map(([name, data]) => (
                                 <View key={name} style={[
                                     styles.prayerTimeCard,
                                     name === 'Dhuhr' && { borderLeftWidth: 3, borderLeftColor: COLORS.black }
@@ -2994,9 +3008,9 @@ export default function App() {
                 <SafeAreaView style={styles.safeContainer}>
                     <Header current={28} total={29} onBack={back} />
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                        <Text style={styles.heading}>How Prayer Lock Works</Text>
+                        <Text style={styles.heading}>How Salah Taqwa Works</Text>
                         <Text style={styles.subheading}>
-                            Here's how SalahTaqa helps you stay focused during prayer times.
+                            Here's how Salah Taqwa helps you build consistent habits.
                         </Text>
 
                         <View style={styles.instructionCardsContainer}>
@@ -3005,9 +3019,9 @@ export default function App() {
                                     <Ionicons name="lock-closed" size={28} color={COLORS.accent} />
                                 </View>
                                 <View style={styles.instructionTextContainer}>
-                                    <Text style={styles.instructionTitle}>Apps Lock Automatically</Text>
+                                    <Text style={styles.instructionTitle}>Apps Lock at Prayer Time</Text>
                                     <Text style={styles.instructionDescription}>
-                                        During prayer time, your selected apps will be locked and restricted.
+                                        When it's time to pray, your selected apps lock automatically.
                                     </Text>
                                 </View>
                             </Card>
@@ -3019,31 +3033,31 @@ export default function App() {
                                 <View style={styles.instructionTextContainer}>
                                     <Text style={styles.instructionTitle}>Unlock After Prayer</Text>
                                     <Text style={styles.instructionDescription}>
-                                        To unlock your apps, return to SalahTaqa and tap "I Have Prayed".
+                                        Return to Salah Taqwa and tap "I Have Prayed" to unlock your apps.
                                     </Text>
                                 </View>
                             </Card>
 
                             <Card style={styles.instructionCard}>
                                 <View style={styles.instructionIconContainer}>
-                                    <Ionicons name="list" size={28} color={COLORS.accent} />
+                                    <Ionicons name="book" size={28} color={COLORS.accent} />
                                 </View>
                                 <View style={styles.instructionTextContainer}>
-                                    <Text style={styles.instructionTitle}>Track Your Progress</Text>
+                                    <Text style={styles.instructionTitle}>Daily Dhikr Lock</Text>
                                     <Text style={styles.instructionDescription}>
-                                        Check off each of the 5 daily prayers, and your progress will be tracked automatically.
+                                        Once a day at your chosen time, your apps lock until you complete a quick moment of Quran, dua, and dhikr.
                                     </Text>
                                 </View>
                             </Card>
 
                             <Card style={styles.instructionCard}>
                                 <View style={styles.instructionIconContainer}>
-                                    <Ionicons name="trophy" size={28} color="#FF9500" />
+                                    <Ionicons name="checkmark-circle" size={28} color={COLORS.accent} />
                                 </View>
                                 <View style={styles.instructionTextContainer}>
-                                    <Text style={styles.instructionTitle}>Earn Milestones</Text>
+                                    <Text style={styles.instructionTitle}>Unlock After Remembrance</Text>
                                     <Text style={styles.instructionDescription}>
-                                        Build streaks and unlock achievements as you maintain your prayer consistency.
+                                        Complete your daily spiritual practice and your apps unlock automatically.
                                     </Text>
                                 </View>
                             </Card>
