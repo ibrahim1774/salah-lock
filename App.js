@@ -3010,7 +3010,7 @@ export default function App() {
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                         <Text style={styles.heading}>How Salah Taqwa Works</Text>
                         <Text style={styles.subheading}>
-                            Here's how Salah Taqwa helps you build consistent habits.
+                            Here's how Salah Taqwa helps you build blessed daily habits.
                         </Text>
 
                         <View style={styles.instructionCardsContainer}>
@@ -3019,9 +3019,9 @@ export default function App() {
                                     <Ionicons name="lock-closed" size={28} color={COLORS.accent} />
                                 </View>
                                 <View style={styles.instructionTextContainer}>
-                                    <Text style={styles.instructionTitle}>Apps Lock at Prayer Time</Text>
+                                    <Text style={styles.instructionTitle}>Prayer Lock</Text>
                                     <Text style={styles.instructionDescription}>
-                                        When it's time to pray, your selected apps lock automatically.
+                                        Apps lock automatically at each of the 5 prayer times until you confirm you've prayed.
                                     </Text>
                                 </View>
                             </Card>
@@ -3031,33 +3031,33 @@ export default function App() {
                                     <Ionicons name="checkmark-circle" size={28} color={COLORS.accent} />
                                 </View>
                                 <View style={styles.instructionTextContainer}>
-                                    <Text style={styles.instructionTitle}>Unlock After Prayer</Text>
+                                    <Text style={styles.instructionTitle}>Daily Remembrance Lock</Text>
                                     <Text style={styles.instructionDescription}>
-                                        Return to Salah Taqwa and tap "I Have Prayed" to unlock your apps.
+                                        Apps lock once daily at your chosen time until you read Quran, make dua, and complete dhikr.
                                     </Text>
                                 </View>
                             </Card>
 
                             <Card style={styles.instructionCard}>
                                 <View style={styles.instructionIconContainer}>
-                                    <Ionicons name="book" size={28} color={COLORS.accent} />
+                                    <Ionicons name="list" size={28} color={COLORS.accent} />
                                 </View>
                                 <View style={styles.instructionTextContainer}>
-                                    <Text style={styles.instructionTitle}>Daily Dhikr Lock</Text>
+                                    <Text style={styles.instructionTitle}>Track Your Progress</Text>
                                     <Text style={styles.instructionDescription}>
-                                        Once a day at your chosen time, your apps lock until you complete a quick moment of Quran, dua, and dhikr.
+                                        See your prayer streaks and daily remembrance completion all in one place.
                                     </Text>
                                 </View>
                             </Card>
 
                             <Card style={styles.instructionCard}>
                                 <View style={styles.instructionIconContainer}>
-                                    <Ionicons name="checkmark-circle" size={28} color={COLORS.accent} />
+                                    <Ionicons name="trophy" size={28} color="#FF9500" />
                                 </View>
                                 <View style={styles.instructionTextContainer}>
-                                    <Text style={styles.instructionTitle}>Unlock After Remembrance</Text>
+                                    <Text style={styles.instructionTitle}>Build Lasting Habits</Text>
                                     <Text style={styles.instructionDescription}>
-                                        Complete your daily spiritual practice and your apps unlock automatically.
+                                        Small daily acts of worship add up. Build consistency and grow closer to Allah.
                                     </Text>
                                 </View>
                             </Card>
