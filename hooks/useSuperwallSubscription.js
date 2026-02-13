@@ -1,28 +1,32 @@
-// Subscription functionality disabled - will enable later
-// Original code commented out to prevent Superwall/IAP initialization errors
+import { usePlacement, useUser } from 'expo-superwall';
+import { Alert } from 'react-native';
 
-/*
-import Superwall from 'expo-superwall';
-import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
-import * as IAP from 'react-native-iap';
+export function useSubscription() {
+    const { subscriptionStatus, getEntitlements, setSubscriptionStatus } = useUser();
+    const { registerPlacement } = usePlacement();
 
-const SUPERWALL_API_KEY_IOS = 'YOUR_SUPERWALL_IOS_KEY';
-const SUPERWALL_API_KEY_ANDROID = 'YOUR_SUPERWALL_ANDROID_KEY';
+    const isSubscribed = subscriptionStatus?.status === 'ACTIVE';
 
-const PRODUCT_IDS = Platform.select({
-    ios: ['com.salahlock.monthly', 'com.salahlock.yearly'],
-    android: ['com.salahlock.monthly', 'com.salahlock.yearly'],
-});
-
-... original initialization code removed to prevent errors ...
-*/
-
-// Stub export - returns inactive subscription state
-export function useSuperwallSubscription() {
-    return {
-        isPro: false,
-        isInitialized: true,
-        showPaywall: () => Promise.resolve(),
+    const showPaywall = async (placement, onFeature) => {
+        await registerPlacement({
+            placement,
+            ...(onFeature ? { feature: onFeature } : {}),
+        });
     };
+
+    const restorePurchases = async () => {
+        try {
+            const entitlements = await getEntitlements();
+            if (entitlements.active && entitlements.active.length > 0) {
+                await setSubscriptionStatus({ status: 'ACTIVE', entitlements: entitlements.active });
+                Alert.alert('Restored!', 'Your subscription has been restored.');
+            } else {
+                Alert.alert('No Subscription Found', 'No active subscription was found for this account.');
+            }
+        } catch (e) {
+            Alert.alert('Error', 'Failed to restore purchases. Please try again.');
+        }
+    };
+
+    return { isSubscribed, showPaywall, restorePurchases };
 }

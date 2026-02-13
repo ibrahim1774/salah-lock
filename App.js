@@ -38,6 +38,8 @@ import Svg, { Circle } from 'react-native-svg';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import DailySpiritualReminder from './components/DailySpiritualReminder';
 import SpiritualFlowScreen from './components/SpiritualFlowScreen';
+import { SuperwallProvider } from 'expo-superwall';
+import { useSubscription } from './hooks/useSuperwallSubscription';
 import { getDailyVerse } from './data/quranVerses';
 import { getAllDuas } from './data/duas';
 import {
@@ -343,7 +345,10 @@ const LoadingBuildScreen = ({ onComplete, styles }) => {
 
 // --- MAIN APP ---
 
-export default function App() {
+function AppContent() {
+    // --- SUPERWALL ---
+    const { isSubscribed, showPaywall, restorePurchases } = useSubscription();
+
     // --- STATE ---
     const [screenIndex, setScreenIndex] = useState(0);
     const [isAppReady, setIsAppReady] = useState(false);
@@ -1090,6 +1095,13 @@ export default function App() {
         return () => { isMounted = false; };
     }, [screenIndex]);
 
+    // Screen 20: Auto-skip (legacy paywall — Superwall handles paywalls now)
+    useEffect(() => {
+        if (!isAppReady && screenIndex === 20) {
+            setScreenIndex(prev => prev + 1);
+        }
+    }, [screenIndex, isAppReady]);
+
     // --- NAVIGATION ---
     const next = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1249,7 +1261,7 @@ export default function App() {
             <Animated.View entering={FadeIn} style={styles.dashboardContent}>
                 <View style={styles.dashHeader}>
                     <View>
-                        <Text style={styles.dashTitleMain}>Salah Taqwa</Text>
+                        <Text style={styles.dashTitleMain}>Deen Taqwa</Text>
                         <Text style={styles.dashSubtitle}>Digital wellness through mindful prayer</Text>
                         <Text style={styles.dashDateText}>{currentTime.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
                     </View>
@@ -1307,6 +1319,13 @@ export default function App() {
                     <TouchableOpacity
                         style={styles.reminderTimeButton}
                         onPress={() => {
+                            if (!isSubscribed) {
+                                showPaywall('feature_reminders', () => {
+                                    setTempPickerTime(dailyReminderTime);
+                                    setShowTimePicker(true);
+                                });
+                                return;
+                            }
                             setTempPickerTime(dailyReminderTime);
                             setShowTimePicker(true);
                         }}
@@ -1324,7 +1343,13 @@ export default function App() {
                     {todaysDailyContent && (
                         <TouchableOpacity
                             style={styles.viewReminderButton}
-                            onPress={() => setShowDailyReminder(true)}
+                            onPress={() => {
+                                if (!isSubscribed) {
+                                    showPaywall('feature_reminders', () => setShowDailyReminder(true));
+                                    return;
+                                }
+                                setShowDailyReminder(true);
+                            }}
                         >
                             <Text style={styles.viewReminderText}>View Today's Reminder</Text>
                         </TouchableOpacity>
@@ -1782,7 +1807,10 @@ export default function App() {
                 <View style={styles.settingsSection}>
                     <Text style={styles.settingsSectionTitle}>APP BLOCKING</Text>
                     <Card style={styles.settingsSectionCard}>
-                        <TouchableOpacity style={styles.settingsItemDetailed} onPress={handleSelectApps}>
+                        <TouchableOpacity style={styles.settingsItemDetailed} onPress={() => {
+                            if (!isSubscribed) { showPaywall('feature_screenlock', handleSelectApps); return; }
+                            handleSelectApps();
+                        }}>
                             <View style={styles.settingsItemLeftDetailed}>
                                 <View style={styles.settingsIconContainer}>
                                     <Ionicons name="apps-outline" size={20} color={COLORS.black} />
@@ -1798,7 +1826,10 @@ export default function App() {
                         </TouchableOpacity>
 
                         <View style={styles.settingsItemDetailed}>
-                            <TouchableOpacity style={styles.testLockButton} onPress={handleImmediateLock}>
+                            <TouchableOpacity style={styles.testLockButton} onPress={() => {
+                                if (!isSubscribed) { showPaywall('feature_screenlock', handleImmediateLock); return; }
+                                handleImmediateLock();
+                            }}>
                                 <Ionicons name="play-outline" size={18} color={COLORS.black} />
                                 <Text style={styles.testLockButtonText}>Test Blocking Now</Text>
                             </TouchableOpacity>
@@ -1863,12 +1894,30 @@ export default function App() {
                 <View style={styles.settingsSection}>
                     <Text style={styles.settingsSectionTitle}>PREMIUM</Text>
                     <Card style={styles.settingsSectionCard}>
-                        <TouchableOpacity style={styles.settingsItemDetailed}>
+                        <TouchableOpacity
+                            style={styles.settingsItemDetailed}
+                            onPress={() => showPaywall('feature_screenlock')}
+                        >
                             <View style={styles.settingsItemLeftDetailed}>
                                 <View style={styles.settingsIconContainer}>
                                     <Ionicons name="star-outline" size={20} color={COLORS.black} />
                                 </View>
-                                <Text style={styles.settingsItemNameDetailed}>Upgrade to Premium</Text>
+                                <Text style={styles.settingsItemNameDetailed}>
+                                    {isSubscribed ? 'Premium Active' : 'Upgrade to Premium'}
+                                </Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={COLORS.tertiaryText} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.settingsItemDetailed}
+                            onPress={restorePurchases}
+                        >
+                            <View style={styles.settingsItemLeftDetailed}>
+                                <View style={styles.settingsIconContainer}>
+                                    <Ionicons name="refresh-outline" size={20} color={COLORS.black} />
+                                </View>
+                                <Text style={styles.settingsItemNameDetailed}>Restore Purchases</Text>
                             </View>
                             <Ionicons name="chevron-forward" size={18} color={COLORS.tertiaryText} />
                         </TouchableOpacity>
@@ -1954,6 +2003,13 @@ export default function App() {
                         key={tab}
                         style={styles.tabItem}
                         onPress={() => {
+                            if (tab === 'Progress' && !isSubscribed) {
+                                showPaywall('feature_progress', () => {
+                                    setActiveTab('Progress');
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                });
+                                return;
+                            }
                             setActiveTab(tab);
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         }}
@@ -1980,7 +2036,7 @@ export default function App() {
                     <Text style={styles.arabicGreeting}>السلام عليكم</Text>
                     <Text style={styles.transliteratedGreeting}>Assalamu Alaikum</Text>
                     <View style={styles.greetingDivider} />
-                    <Text style={styles.logo}>salah taqwa</Text>
+                    <Text style={styles.logo}>deen taqwa</Text>
                     <Text style={styles.tagline}>A mindful approach to prayer</Text>
                 </Animated.View>
 
@@ -2426,7 +2482,7 @@ export default function App() {
                     <Header current={13} total={29} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>a different approach</Text>
-                        <Text style={styles.approachTitle}>Salah Taqwa doesn't just remind you to pray.</Text>
+                        <Text style={styles.approachTitle}>Deen Taqwa doesn't just remind you to pray.</Text>
                         <Text style={styles.approachTitle}>It creates sacred space by gently removing distractions.</Text>
                         <View style={styles.spacer} />
                         <PremiumButton title="Tell me more" onPress={next} />
@@ -2634,10 +2690,10 @@ export default function App() {
                 <SafeAreaView style={styles.safeContainer}>
                     <Header current={19} total={29} onBack={back} />
                     <View style={styles.content}>
-                        <Text style={styles.introSmall}>here's how salah taqwa works</Text>
+                        <Text style={styles.introSmall}>here's how deen taqwa works</Text>
                         <Text style={styles.heading}>we can help you build habits that bring you closer to Allah</Text>
                         <Text style={[styles.bodyText, { marginTop: 16 }]}>
-                            Salah Taqwa locks your apps at prayer time so the app can help you try to not miss a prayer, and once a day for a quick moment of dhikr, dua, and Quran.
+                            Deen Taqwa locks your apps at prayer time so the app can help you try to not miss a prayer, and once a day for a quick moment of dhikr, dua, and Quran.
                         </Text>
 
                         <View style={{ marginTop: 20 }}>
@@ -2674,102 +2730,9 @@ export default function App() {
         );
     }
 
-    // Screen 20: The "Why" Screen with 7-Day Preview & Free Trial
+    // Screen 20: Auto-skip (legacy paywall — Superwall handles paywalls now)
     if (!isAppReady && screenIndex === 20) {
-        return (
-            <ScreenTransition>
-                <SafeAreaView style={styles.safeContainer}>
-                    <Header current={20} total={29} onBack={back} />
-                    <ScrollView style={[styles.content, { paddingTop: 20 }]} showsVerticalScrollIndicator={false}>
-                        <Text style={[styles.heading, { textAlign: 'center', fontSize: 24 }]}>it's not about willpower</Text>
-                        <Text style={[styles.subheading, { textAlign: 'center', marginTop: 4, fontSize: 14 }]}>it's about making space for Allah</Text>
-
-                        <Text style={[styles.subheading, { marginTop: 10, fontSize: 13, lineHeight: 19 }]}>
-                            The Prophet ﷺ said salah is the first thing we'll be asked about. Each prayer takes just minutes, yet we spend hours on our phones. Salah Taqwa helps you reclaim that time.
-                        </Text>
-
-                        <Text style={[styles.sectionHeader, { marginTop: 12, fontSize: 14 }]}>your first 7 days:</Text>
-
-                        <View style={[styles.dayCard, { paddingVertical: 8, paddingHorizontal: 12, marginBottom: 6 }]}>
-                            <Text style={[styles.dayTitle, { fontSize: 14 }]}>Day 1 - Enter the sacred space</Text>
-                            <Text style={[styles.dayDesc, { fontSize: 12 }]}>Complete your first prayer lock. Feel the peace of putting Allah first.</Text>
-                        </View>
-
-                        <View style={[styles.dayCard, { paddingVertical: 8, paddingHorizontal: 12, marginBottom: 6 }]}>
-                            <Text style={[styles.dayTitle, { fontSize: 14 }]}>Day 2 - Build the habit</Text>
-                            <Text style={[styles.dayDesc, { fontSize: 12 }]}>The lock might feel hard. That's normal. We'll help you push through.</Text>
-                        </View>
-
-                        <View style={[styles.dayCard, { paddingVertical: 8, paddingHorizontal: 12, marginBottom: 6 }]}>
-                            <Text style={[styles.dayTitle, { fontSize: 14 }]}>Day 3 - Find your rhythm</Text>
-                            <Text style={[styles.dayDesc, { fontSize: 12 }]}>Guided prompts will help you surrender your worries to Allah.</Text>
-                        </View>
-
-                        <Text style={[styles.subheading, { marginTop: 6, textAlign: 'center', fontSize: 12 }]}>
-                            5 daily prayers = reward of 50. Allah multiplies your good deeds 10x.
-                        </Text>
-
-                        <View style={[styles.dividerLine, { marginVertical: 10 }]} />
-
-                        <Text style={[styles.heading, { fontSize: 20, marginTop: 0 }]}>Start your 3-day free trial</Text>
-
-                        <View style={{ marginTop: 8 }}>
-                            <Text style={[styles.timelineItem, { fontSize: 11, marginBottom: 3 }]}>📅 Today - Unlock all features: app blocking, streak tracking</Text>
-                            <Text style={[styles.timelineItem, { fontSize: 11, marginBottom: 3 }]}>⏰ In 2 days - We'll remind you the trial is ending</Text>
-                            <Text style={[styles.timelineItem, { fontSize: 11, marginBottom: 3 }]}>✅ In 3 days - You'll be charged unless you cancel</Text>
-                        </View>
-
-                        <View style={[styles.planContainer, { marginTop: 10 }]}>
-                            <TouchableOpacity
-                                style={[
-                                    styles.planCard,
-                                    { paddingVertical: 12 },
-                                    userData.selectedPlan === 'monthly' && styles.planCardSelected
-                                ]}
-                                onPress={() => updateData('selectedPlan', 'monthly')}
-                            >
-                                <Text style={[styles.planLabel, { fontSize: 13 }]}>monthly</Text>
-                                <Text style={[styles.planPrice, { fontSize: 16 }]}>$10/month</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={[
-                                    styles.planCard,
-                                    { paddingVertical: 12 },
-                                    userData.selectedPlan === 'yearly' && styles.planCardSelected
-                                ]}
-                                onPress={() => updateData('selectedPlan', 'yearly')}
-                            >
-                                <View style={styles.trialBadge}>
-                                    <Text style={styles.trialBadgeText}>3-day free trial</Text>
-                                </View>
-                                <Text style={[styles.planLabel, { fontSize: 13 }]}>yearly</Text>
-                                <Text style={[styles.planPrice, { fontSize: 16 }]}>$70/year</Text>
-                                <Text style={[styles.planSubtext, { fontSize: 11 }]}>($5.83/month)</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <Text style={[styles.privacyNoticeText, { marginTop: 6, fontSize: 11 }]}>Cancel anytime. No payment due now.</Text>
-
-                        <PremiumButton
-                            title="Start my free trial"
-                            onPress={next}
-                            style={{ marginTop: 10 }}
-                        />
-
-                        <Text style={[styles.finePrint, { marginTop: 8 }]}>3 days free, then $70/year. Cancel anytime.</Text>
-
-                        <View style={[styles.footerLinks, { marginTop: 10, marginBottom: 20 }]}>
-                            <TouchableOpacity><Text style={styles.footerLink}>Privacy</Text></TouchableOpacity>
-                            <Text style={styles.footerDivider}>|</Text>
-                            <TouchableOpacity><Text style={styles.footerLink}>Terms</Text></TouchableOpacity>
-                        </View>
-
-                        <View style={{ height: 40 }} />
-                    </ScrollView>
-                </SafeAreaView>
-            </ScreenTransition>
-        );
+        return null;
     }
 
     // Screen 21: How It Works
@@ -2926,7 +2889,7 @@ export default function App() {
                         </View>
                         <Text style={styles.heading}>Enable Screen Time</Text>
                         <Text style={styles.subheading}>
-                            This is required for Salah Taqwa to pause distracting apps during your prayer times.
+                            This is required for Deen Taqwa to pause distracting apps during your prayer times.
                         </Text>
                         <View style={styles.spacer} />
                         <PremiumButton
@@ -3008,9 +2971,9 @@ export default function App() {
                 <SafeAreaView style={styles.safeContainer}>
                     <Header current={28} total={29} onBack={back} />
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                        <Text style={styles.heading}>How Salah Taqwa Works</Text>
+                        <Text style={styles.heading}>How Deen Taqwa Works</Text>
                         <Text style={styles.subheading}>
-                            Here's how Salah Taqwa helps you build blessed daily habits.
+                            Here's how Deen Taqwa helps you build blessed daily habits.
                         </Text>
 
                         <View style={styles.instructionCardsContainer}>
@@ -3100,7 +3063,10 @@ export default function App() {
                             <View style={styles.spacer} />
                             <PremiumButton
                                 title="Begin Your Journey"
-                                onPress={completeOnboarding}
+                                onPress={async () => {
+                                    await showPaywall('onboarding_complete');
+                                    await completeOnboarding();
+                                }}
                             />
                         </Animated.View>
                     </View>
@@ -3148,6 +3114,14 @@ export default function App() {
     }
 
     return null;
+}
+
+export default function App() {
+    return (
+        <SuperwallProvider apiKeys={{ ios: 'pk_LvkRwCJp1-S6QRdpq5IA2' }}>
+            <AppContent />
+        </SuperwallProvider>
+    );
 }
 
 const styles = StyleSheet.create({
