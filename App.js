@@ -2970,7 +2970,7 @@ function AppContent() {
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
                     <Header current={28} total={29} onBack={back} />
-                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                    <ScrollView style={[styles.content, { paddingTop: 20 }]} showsVerticalScrollIndicator={false}>
                         <Text style={styles.heading}>How Deen Taqwa Works</Text>
                         <Text style={styles.subheading}>
                             Here's how Deen Taqwa helps you build blessed daily habits.
@@ -3027,12 +3027,13 @@ function AppContent() {
                         </View>
 
                         <View style={{ height: 20 }} />
+                    </ScrollView>
+                    <View style={{ paddingHorizontal: 30, paddingBottom: 20 }}>
                         <PremiumButton
                             title="Continue to Dashboard"
                             onPress={next}
                         />
-                        <View style={{ height: 40 }} />
-                    </ScrollView>
+                    </View>
                 </SafeAreaView>
             </ScreenTransition>
         );
