@@ -39,6 +39,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import DailySpiritualReminder from './components/DailySpiritualReminder';
 import SpiritualFlowScreen from './components/SpiritualFlowScreen';
 import { SuperwallProvider } from 'expo-superwall';
+import { PostHogProvider, usePostHog } from 'posthog-react-native';
 import { useSubscription } from './hooks/useSuperwallSubscription';
 import { getDailyVerse } from './data/quranVerses';
 import { getAllDuas } from './data/duas';
@@ -348,6 +349,13 @@ const LoadingBuildScreen = ({ onComplete, styles }) => {
 function AppContent() {
     // --- SUPERWALL ---
     const { isSubscribed, showPaywall, restorePurchases } = useSubscription();
+
+    // --- ANALYTICS ---
+    const posthog = usePostHog();
+
+    useEffect(() => {
+        posthog?.capture('app_opened');
+    }, []);
 
     // --- STATE ---
     const [screenIndex, setScreenIndex] = useState(0);
@@ -761,6 +769,7 @@ function AppContent() {
             setIsCurrentlyLocked(false);
             setIsDailyReminderLock(false);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            posthog?.capture('daily_reminder_completed');
         } catch (e) {
             console.error("Spiritual Flow Complete Error:", e);
         }
@@ -1022,6 +1031,7 @@ function AppContent() {
         }
 
         await AsyncStorage.setItem('onboarding_complete', 'true');
+        posthog?.capture('onboarding_completed');
         setIsAppReady(true);
     };
 
@@ -1102,6 +1112,25 @@ function AppContent() {
         }
     }, [screenIndex, isAppReady]);
 
+    // Onboarding screen funnel tracking
+    const ONBOARDING_SCREEN_NAMES = [
+        'welcome', 'name', 'age', 'phone_usage', 'prayer_frequency',
+        'prayer_goal', 'prayer_days', 'challenges_1', 'challenges_2', 'challenges_3',
+        'deeper_struggles_1', 'deeper_struggles_2', 'deeper_struggles_3', 'deeper_struggles_4', 'deeper_struggles_5',
+        'commitment', 'transition', 'social_proof_1', 'social_proof_2', 'social_proof_3',
+        'skip_legacy_paywall', 'how_it_works_intro', 'notification_permission', 'screen_time_permission',
+        'prayer_time_loading', 'prayer_time_confirm', 'select_apps', 'select_apps_confirm',
+        'how_app_works', 'final_success',
+    ];
+    useEffect(() => {
+        if (!isAppReady && screenIndex >= 0 && screenIndex < ONBOARDING_SCREEN_NAMES.length) {
+            posthog?.capture('onboarding_screen_viewed', {
+                screen_index: screenIndex,
+                screen_name: ONBOARDING_SCREEN_NAMES[screenIndex],
+            });
+        }
+    }, [screenIndex, isAppReady]);
+
     // --- NAVIGATION ---
     const next = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1123,6 +1152,10 @@ function AppContent() {
         Vibration.vibrate(50);
         setCompletedPrayers(prev => {
             const day = prev[dateKey] || {};
+            const wasCompleted = day[prayerName];
+            if (!wasCompleted) {
+                posthog?.capture('prayer_marked_complete', { prayer: prayerName, date: dateKey });
+            }
             const updated = {
                 ...prev,
                 [dateKey]: {
@@ -2010,6 +2043,7 @@ function AppContent() {
                                 });
                                 return;
                             }
+                            posthog?.capture('tab_changed', { tab });
                             setActiveTab(tab);
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         }}
@@ -3119,9 +3153,14 @@ function AppContent() {
 
 export default function App() {
     return (
-        <SuperwallProvider apiKeys={{ ios: 'pk_LvkRwCJp1-S6QRdpq5IA2' }}>
-            <AppContent />
-        </SuperwallProvider>
+        <PostHogProvider
+            apiKey="phc_W1Q9mQeeRcTIAxYrrRe0mLhbf1kH90G2KUf6f2GakKS"
+            options={{ host: 'https://us.i.posthog.com' }}
+        >
+            <SuperwallProvider apiKeys={{ ios: 'pk_LvkRwCJp1-S6QRdpq5IA2' }}>
+                <AppContent />
+            </SuperwallProvider>
+        </PostHogProvider>
     );
 }
 
