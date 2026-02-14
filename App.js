@@ -3156,6 +3156,7 @@ export default function App() {
         <PostHogProvider
             apiKey="phc_W1Q9mQeeRcTIAxYrrRe0mLhbf1kH90G2KUf6f2GakKS"
             options={{ host: 'https://us.i.posthog.com' }}
+            autocapture={false}
         >
             <SuperwallProvider apiKeys={{ ios: 'pk_LvkRwCJp1-S6QRdpq5IA2' }}>
                 <AppContent />
