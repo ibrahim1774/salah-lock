@@ -713,28 +713,6 @@ function AppContent() {
         }
     };
 
-    const handleImmediateLock = async () => {
-        if (!isAppsSelected) {
-            Alert.alert(
-                "No Apps Selected",
-                "Please select apps to block first.",
-                [{ text: "OK" }]
-            );
-            return;
-        }
-        try {
-            await SalahLockModule.testBlockApps();
-            setIsCurrentlyLocked(true);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } catch (e) {
-            console.error("Immediate Lock Error:", e);
-            Alert.alert(
-                "Blocking Failed",
-                "Could not block apps. Please try again.",
-                [{ text: "OK" }]
-            );
-        }
-    };
 
     const handleIHavePrayed = async () => {
         try {
@@ -1857,16 +1835,6 @@ function AppContent() {
                                 <Ionicons name="chevron-forward" size={18} color={COLORS.tertiaryText} />
                             </View>
                         </TouchableOpacity>
-
-                        <View style={styles.settingsItemDetailed}>
-                            <TouchableOpacity style={styles.testLockButton} onPress={() => {
-                                if (!isSubscribed) { showPaywall('feature_screenlock', handleImmediateLock); return; }
-                                handleImmediateLock();
-                            }}>
-                                <Ionicons name="play-outline" size={18} color={COLORS.black} />
-                                <Text style={styles.testLockButtonText}>Test Blocking Now</Text>
-                            </TouchableOpacity>
-                        </View>
 
 
                     </Card>
