@@ -31,7 +31,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     private func createShieldConfiguration() -> ShieldConfiguration {
         let lockType = userDefaults?.string(forKey: "lockType") ?? "prayer"
 
-        if lockType == "dailyReminder" {
+        if lockType == "dailyReminder" || lockType == "dhikrSession" {
             let icon = UIImage(systemName: "book.fill")
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterial,

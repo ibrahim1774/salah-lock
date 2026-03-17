@@ -60,7 +60,12 @@ const DUA_DELAY_MS = 5000;
 const DHIKR_DELAY_MS = 10000;
 const DONE_DELAY_MS = 15000;
 
-const SpiritualFlowScreen = ({ content, onComplete }) => {
+// Auto-complete mode: 15s per section, auto-unlock after all three
+const AUTO_DUA_DELAY_MS = 15000;
+const AUTO_DHIKR_DELAY_MS = 30000;
+const AUTO_COMPLETE_MS = 45000;
+
+const SpiritualFlowScreen = ({ content, onComplete, autoComplete = false }) => {
   const [showDua, setShowDua] = useState(false);
   const [showDhikr, setShowDhikr] = useState(false);
   const [showDoneButton, setShowDoneButton] = useState(false);
@@ -69,27 +74,31 @@ const SpiritualFlowScreen = ({ content, onComplete }) => {
   const { verse, dua } = content || {};
 
   useEffect(() => {
+    const duaDelay = autoComplete ? AUTO_DUA_DELAY_MS : DUA_DELAY_MS;
+    const dhikrDelay = autoComplete ? AUTO_DHIKR_DELAY_MS : DHIKR_DELAY_MS;
+    const doneDelay = autoComplete ? AUTO_COMPLETE_MS : DONE_DELAY_MS;
+
     const timer1 = setTimeout(() => {
       setShowDua(true);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
-    }, DUA_DELAY_MS);
+    }, duaDelay);
 
     const timer2 = setTimeout(() => {
       setShowDhikr(true);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
-    }, DHIKR_DELAY_MS);
+    }, dhikrDelay);
 
     const timer3 = setTimeout(() => {
       setShowDoneButton(true);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
-    }, DONE_DELAY_MS);
+    }, doneDelay);
 
     return () => {
       clearTimeout(timer1);
       clearTimeout(timer2);
       clearTimeout(timer3);
     };
-  }, []);
+  }, [autoComplete]);
 
   const renderQuran = () => {
     if (!verse) return null;
@@ -193,7 +202,7 @@ const SpiritualFlowScreen = ({ content, onComplete }) => {
           {showDua && renderDua()}
           {showDhikr && renderDhikr()}
 
-          {showDhikr && !showDoneButton && (
+          {showDhikr && !showDoneButton && !autoComplete && (
             <Animated.View entering={FadeIn.duration(400)} style={styles.waitContainer}>
               <Text style={styles.waitText}>
                 Take a moment to recite the dhikr...

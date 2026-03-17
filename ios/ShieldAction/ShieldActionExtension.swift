@@ -14,7 +14,7 @@ class ShieldActionExtension: ShieldActionDelegate {
 
     private func unlockIfPrayerLock(completionHandler: @escaping (ShieldActionResponse) -> Void) {
         let lockType = userDefaults?.string(forKey: "lockType") ?? "prayer"
-        if lockType == "dailyReminder" {
+        if lockType == "dailyReminder" || lockType == "dhikrSession" {
             // Daily reminder: DON'T unlock — user must complete spiritual flow in app
             completionHandler(.close)
         } else {

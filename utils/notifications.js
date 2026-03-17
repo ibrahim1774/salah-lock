@@ -134,13 +134,126 @@ export const setupNotificationResponseHandler = (onNotificationTapped) => {
 
     if (data?.type === 'daily_spiritual_reminder') {
       console.log('Daily spiritual reminder notification tapped');
-      onNotificationTapped();
+      onNotificationTapped(data);
     }
   });
 
   return () => {
     subscription.remove();
   };
+};
+
+// Storage key for dhikr session notification IDs
+const DHIKR_NOTIFICATION_IDS_KEY = '@dhikr_notification_ids';
+
+// Schedule per-session dhikr notifications (one per session time)
+export const scheduleDhikrNotifications = async (sessions) => {
+  try {
+    await cancelDhikrNotifications();
+
+    const hasPermission = await requestNotificationPermissions();
+    if (!hasPermission) return false;
+
+    const notificationIds = [];
+    for (let i = 0; i < sessions.length; i++) {
+      const { hour, minute } = sessions[i];
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Dhikr Session ${i + 1}`,
+          body: 'Time for your Quran verse, dua, and dhikr',
+          data: { type: 'dhikr_session', sessionIndex: i },
+          sound: true,
+        },
+        trigger: {
+          type: 'daily',
+          hour,
+          minute,
+          repeats: true,
+        },
+      });
+      notificationIds.push(id);
+    }
+
+    await AsyncStorage.setItem(DHIKR_NOTIFICATION_IDS_KEY, JSON.stringify(notificationIds));
+    console.log(`Dhikr notifications scheduled: ${notificationIds.length} sessions`);
+    return true;
+  } catch (error) {
+    console.error('Error scheduling dhikr notifications:', error);
+    return false;
+  }
+};
+
+// Cancel dhikr notifications by their stored IDs
+export const cancelDhikrNotifications = async () => {
+  try {
+    const idsJson = await AsyncStorage.getItem(DHIKR_NOTIFICATION_IDS_KEY);
+    if (idsJson) {
+      const ids = JSON.parse(idsJson);
+      for (const id of ids) {
+        await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+      }
+      await AsyncStorage.removeItem(DHIKR_NOTIFICATION_IDS_KEY);
+    }
+  } catch (error) {
+    console.error('Error cancelling dhikr notifications:', error);
+  }
+};
+
+// Storage key for multi-session reminder notification IDs
+const REMINDER_SESSION_IDS_KEY = '@reminder_session_ids';
+
+// Schedule per-session reminder notifications (replaces single daily notification for multi-session)
+export const scheduleMultipleReminderNotifications = async (sessions) => {
+  try {
+    await cancelMultipleReminderNotifications();
+    await cancelDailyNotification();
+
+    const hasPermission = await requestNotificationPermissions();
+    if (!hasPermission) return false;
+
+    const notificationIds = [];
+    for (let i = 0; i < sessions.length; i++) {
+      const { hour, minute } = sessions[i];
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Daily Spiritual Reminder',
+          body: 'Your Quran verse, dua, and dhikr are ready',
+          data: { type: 'daily_spiritual_reminder', sessionIndex: i },
+          sound: true,
+        },
+        trigger: {
+          type: 'daily',
+          hour,
+          minute,
+          repeats: true,
+        },
+      });
+      notificationIds.push(id);
+    }
+
+    await AsyncStorage.setItem(REMINDER_SESSION_IDS_KEY, JSON.stringify(notificationIds));
+    console.log(`Multi-session reminder notifications scheduled: ${notificationIds.length}`);
+    return true;
+  } catch (error) {
+    console.error('Error scheduling multi-session reminder notifications:', error);
+    return false;
+  }
+};
+
+// Cancel multi-session reminder notifications by stored IDs
+export const cancelMultipleReminderNotifications = async () => {
+  try {
+    const idsJson = await AsyncStorage.getItem(REMINDER_SESSION_IDS_KEY);
+    if (idsJson) {
+      const ids = JSON.parse(idsJson);
+      for (const id of ids) {
+        await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+      }
+      await AsyncStorage.removeItem(REMINDER_SESSION_IDS_KEY);
+    }
+  } catch (error) {
+    console.error('Error cancelling multi-session reminder notifications:', error);
+  }
 };
 
 // Format time for display (e.g., "8:00 AM")

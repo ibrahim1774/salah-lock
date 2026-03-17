@@ -29,9 +29,18 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         log("Interval STARTED for \(activity.rawValue)")
 
         // Tag lock type for shield configuration
-        if activity.rawValue.hasPrefix("dailyReminder") {
+        if activity.rawValue.hasPrefix("dhikr_") {
+            let parts = activity.rawValue.split(separator: "_")
+            let sessionIndex = Int(parts.last ?? "0") ?? 0
+            userDefaults?.set(sessionIndex, forKey: "dhikrSessionIndex")
+            userDefaults?.set("dhikrSession", forKey: "lockType")
+            log("Set lockType to dhikrSession, index: \(sessionIndex)")
+        } else if activity.rawValue.hasPrefix("dailyReminder") {
+            let parts = activity.rawValue.split(separator: "_")
+            let sessionIndex = (parts.count > 1) ? (Int(parts.last ?? "") ?? 0) : 0
+            userDefaults?.set(sessionIndex, forKey: "dailyReminderSessionIndex")
             userDefaults?.set("dailyReminder", forKey: "lockType")
-            log("Set lockType to dailyReminder")
+            log("Set lockType to dailyReminder, sessionIndex: \(sessionIndex)")
         } else {
             userDefaults?.set("prayer", forKey: "lockType")
             log("Set lockType to prayer")

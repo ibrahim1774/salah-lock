@@ -13,6 +13,15 @@ class SalahLockModule: NSObject {
     private let activityCenter = DeviceActivityCenter()
     private let userDefaults = UserDefaults(suiteName: "group.com.ibrahim1774.prayerlock")
 
+    private func logSchedule(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        var logs = userDefaults?.stringArray(forKey: "scheduleLogs") ?? []
+        logs.append("[\(timestamp)] \(message)")
+        if logs.count > 100 { logs = Array(logs.suffix(100)) }
+        userDefaults?.set(logs, forKey: "scheduleLogs")
+        print("SalahLock[Main]: \(message)")
+    }
+
     @objc static func requiresMainQueueSetup() -> Bool {
         return true
     }
@@ -281,6 +290,56 @@ class SalahLockModule: NSObject {
         resolve(true)
     }
 
+    @objc func scheduleMultipleReminderLocks(_ sessions: NSArray, duration: Int, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        print("🔔 Scheduling \(sessions.count) multi-session reminder locks")
+
+        // Cancel all existing dailyReminder* activities
+        let reminderActivities = activityCenter.activities.filter { $0.rawValue.hasPrefix("dailyReminder") }
+        if !reminderActivities.isEmpty {
+            activityCenter.stopMonitoring(Array(reminderActivities))
+        }
+
+        for (index, sessionObj) in sessions.enumerated() {
+            guard let session = sessionObj as? NSDictionary,
+                  let hour = (session["hour"] as? NSNumber)?.intValue,
+                  let minute = (session["minute"] as? NSNumber)?.intValue else { continue }
+
+            var startComponents = DateComponents()
+            startComponents.hour = hour
+            startComponents.minute = minute
+
+            var endComponents = DateComponents()
+            let totalMinutes = minute + duration
+            let endHour = (hour + totalMinutes / 60) % 24
+            let endMin = totalMinutes % 60
+            endComponents.hour = endHour
+            endComponents.minute = endMin
+
+            let schedule = DeviceActivitySchedule(
+                intervalStart: startComponents,
+                intervalEnd: endComponents,
+                repeats: true
+            )
+
+            let activityName = DeviceActivityName(rawValue: "dailyReminder_\(index)")
+
+            do {
+                try activityCenter.startMonitoring(activityName, during: schedule)
+                logSchedule("✅ Scheduled dailyReminder_\(index) at \(hour):\(String(format: "%02d", minute)) -> \(endHour):\(String(format: "%02d", endMin))")
+            } catch {
+                logSchedule("❌ FAILED dailyReminder_\(index): \(error.localizedDescription)")
+            }
+        }
+        let activeNames = activityCenter.activities.map { $0.rawValue }
+        logSchedule("Active schedules after registration: \(activeNames)")
+        resolve(true)
+    }
+
+    @objc func getDailyReminderSessionIndex(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let index = userDefaults?.integer(forKey: "dailyReminderSessionIndex") ?? 0
+        resolve(index)
+    }
+
     @objc func getLockType(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         let lockType = userDefaults?.string(forKey: "lockType")
         resolve(lockType as Any)
@@ -291,10 +350,83 @@ class SalahLockModule: NSObject {
         resolve(true)
     }
 
+    @objc func setLockType(_ type: String, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        userDefaults?.set(type, forKey: "lockType")
+        resolve(true)
+    }
+
+    // MARK: - Dhikr Session Scheduling
+
+    @objc func scheduleDhikrLocks(_ sessions: NSArray, duration: Int, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        print("🔔 Scheduling \(sessions.count) dhikr session locks")
+
+        // Cancel only dhikr_ prefixed activities (never touch prayer_ or dailyReminder)
+        let dhikrActivities = activityCenter.activities.filter { $0.rawValue.hasPrefix("dhikr_") }
+        if !dhikrActivities.isEmpty {
+            activityCenter.stopMonitoring(Array(dhikrActivities))
+        }
+
+        for (index, sessionObj) in sessions.enumerated() {
+            guard let session = sessionObj as? NSDictionary,
+                  let hour = (session["hour"] as? NSNumber)?.intValue,
+                  let minute = (session["minute"] as? NSNumber)?.intValue else { continue }
+
+            var startComponents = DateComponents()
+            startComponents.hour = hour
+            startComponents.minute = minute
+
+            var endComponents = DateComponents()
+            let totalMinutes = minute + duration
+            let endHour = (hour + totalMinutes / 60) % 24
+            let endMin = totalMinutes % 60
+            endComponents.hour = endHour
+            endComponents.minute = endMin
+
+            let schedule = DeviceActivitySchedule(
+                intervalStart: startComponents,
+                intervalEnd: endComponents,
+                repeats: true
+            )
+
+            let activityName = DeviceActivityName(rawValue: "dhikr_\(index)")
+
+            do {
+                try activityCenter.startMonitoring(activityName, during: schedule)
+                print("✅ Dhikr session \(index) scheduled: \(hour):\(String(format: "%02d", minute)) -> \(endHour):\(String(format: "%02d", endMin))")
+            } catch {
+                print("❌ Failed to schedule dhikr session \(index): \(error.localizedDescription)")
+            }
+        }
+        resolve(true)
+    }
+
+    @objc func cancelDhikrLocks(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let dhikrActivities = activityCenter.activities.filter { $0.rawValue.hasPrefix("dhikr_") }
+        if !dhikrActivities.isEmpty {
+            activityCenter.stopMonitoring(Array(dhikrActivities))
+        }
+        if userDefaults?.string(forKey: "lockType") == "dhikrSession" {
+            userDefaults?.removeObject(forKey: "lockType")
+            userDefaults?.removeObject(forKey: "dhikrSessionIndex")
+        }
+        print("🔕 Dhikr session locks cancelled")
+        resolve(true)
+    }
+
+    @objc func getDhikrSessionIndex(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let index = userDefaults?.integer(forKey: "dhikrSessionIndex") ?? 0
+        resolve(index)
+    }
+
     // MARK: - Debug Methods
 
     @objc func getExtensionLogs(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         let logs = userDefaults?.stringArray(forKey: "extensionLogs") ?? []
+        resolve(logs)
+    }
+
+    @objc func getScheduleLogs(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let logs = userDefaults?.stringArray(forKey: "scheduleLogs") ?? []
         resolve(logs)
     }
 

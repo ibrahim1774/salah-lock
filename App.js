@@ -20,7 +20,8 @@ import {
     TextInput,
     TouchableOpacity,
     Vibration,
-    View
+    View,
+    AppState
 } from 'react-native';
 import Animated, {
     FadeIn,
@@ -41,14 +42,13 @@ import SpiritualFlowScreen from './components/SpiritualFlowScreen';
 import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider, usePostHog } from 'posthog-react-native';
 import { useSubscription } from './hooks/useSuperwallSubscription';
-import { getDailyVerse } from './data/quranVerses';
+import { getAllVerses } from './data/quranVerses';
 import { getAllDuas } from './data/duas';
 import {
-    scheduleDailyNotification,
-    getSavedReminderTime,
-    isReminderEnabled,
     setupNotificationResponseHandler,
     formatTime as formatNotificationTime,
+    scheduleMultipleReminderNotifications,
+    cancelMultipleReminderNotifications,
 } from './utils/notifications';
 import {
     requestPrayerNotificationPermissions,
@@ -406,15 +406,21 @@ function AppContent() {
 
     // Daily Spiritual Reminder state
     const [showDailyReminder, setShowDailyReminder] = useState(false);
-    const [dailyReminderTime, setDailyReminderTime] = useState({ hour: 8, minute: 0 });
-    const [showTimePicker, setShowTimePicker] = useState(false);
     const [todaysDailyContent, setTodaysDailyContent] = useState(null);
-    const [isReminderOn, setIsReminderOn] = useState(false);
-    const [tempPickerTime, setTempPickerTime] = useState({ hour: 8, minute: 0 });
 
     // Daily Reminder Lock / Spiritual Flow state
     const [showSpiritualFlow, setShowSpiritualFlow] = useState(false);
     const [isDailyReminderLock, setIsDailyReminderLock] = useState(false);
+
+    // Multi-session spiritual reminder state
+    const [reminderSessionCount, setReminderSessionCount] = useState(1);
+    const [reminderSessionTimes, setReminderSessionTimes] = useState([{ hour: 8, minute: 0 }]);
+    const [reminderSessionContent, setReminderSessionContent] = useState([]);
+    const [activeReminderSessionIndex, setActiveReminderSessionIndex] = useState(0);
+    const [showReminderSettings, setShowReminderSettings] = useState(false);
+    const [editingReminderSessionIndex, setEditingReminderSessionIndex] = useState(null);
+    const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
+    const [tempReminderPickerTime, setTempReminderPickerTime] = useState({ hour: 8, minute: 0 });
 
     // Prayer notification state
     const [prayerNotificationsEnabled, setPrayerNotificationsEnabledState] = useState(true);
@@ -787,6 +793,8 @@ function AppContent() {
                     }
                     // Auto-show spiritual flow when daily reminder lock is active
                     if (active && isReminder) {
+                        const idx = await SalahLockModule.getDailyReminderSessionIndex();
+                        setActiveReminderSessionIndex(idx);
                         setShowSpiritualFlow(true);
                     }
                 } catch (e) {
@@ -799,6 +807,50 @@ function AppContent() {
         const interval = setInterval(checkLockStatus, 5000); // Check every 5s
         return () => clearInterval(interval);
     }, [isCurrentlyLocked]);
+
+    // Re-register schedules and detect locks immediately when app comes to foreground
+    useEffect(() => {
+        const handleAppStateChange = async (nextAppState) => {
+            if (nextAppState === 'active') {
+                // Re-register reminder schedules in case they were cleared
+                try {
+                    const sessionEnabled = await AsyncStorage.getItem('@reminder_sessions_enabled');
+                    if (sessionEnabled === 'true') {
+                        const countStr = await AsyncStorage.getItem('@reminder_session_count');
+                        const count = countStr ? parseInt(countStr, 10) : 1;
+                        const timesJson = await AsyncStorage.getItem('@reminder_session_times');
+                        const times = timesJson ? JSON.parse(timesJson) : [{ hour: 8, minute: 0 }];
+                        await SalahLockModule.scheduleMultipleReminderLocks(times.slice(0, count), 30);
+                    }
+                } catch (e) {}
+                // Dump extension logs to Metro console
+                try {
+                    const extLogs = await SalahLockModule.getExtensionLogs();
+                    if (extLogs && extLogs.length > 0) {
+                        console.log('[Extension logs on foreground]', extLogs.slice(-5).join('\n'));
+                    } else {
+                        console.log('[Extension logs on foreground] EMPTY - extension has never fired');
+                    }
+                } catch (e) {}
+                // Immediately check lock status instead of waiting for 5s interval
+                try {
+                    const active = await SalahLockModule.checkIsShieldActive();
+                    if (active) {
+                        setIsCurrentlyLocked(true);
+                        const lockType = await SalahLockModule.getLockType();
+                        if (lockType === 'dailyReminder') {
+                            setIsDailyReminderLock(true);
+                            const idx = await SalahLockModule.getDailyReminderSessionIndex();
+                            setActiveReminderSessionIndex(idx);
+                            setShowSpiritualFlow(true);
+                        }
+                    }
+                } catch (e) {}
+            }
+        };
+        const sub = AppState.addEventListener('change', handleAppStateChange);
+        return () => sub.remove();
+    }, []);
 
     useEffect(() => {
         if (screenIndex === 0) {
@@ -853,14 +905,17 @@ function AppContent() {
                         await fetchPrayerTimesByGPS();
                         console.log("Auto-fetched prayer times on startup");
 
-                        // Also re-sync daily reminder lock if enabled
-                        const reminderEnabled = await isReminderEnabled();
-                        if (reminderEnabled) {
-                            const savedTime = await getSavedReminderTime();
-                            await SalahLockModule.scheduleDailyReminderLock(
-                                savedTime.hour, savedTime.minute, 60
-                            );
-                            console.log("Auto-synced daily reminder lock on startup");
+                        // Re-sync multi-session reminder locks on startup
+                        const sessionCountStr = await AsyncStorage.getItem('@reminder_session_count');
+                        const sessionEnabled = await AsyncStorage.getItem('@reminder_sessions_enabled');
+                        if (sessionEnabled === 'true') {
+                            const sessionCount = sessionCountStr ? parseInt(sessionCountStr, 10) : 1;
+                            const sessionTimesJson = await AsyncStorage.getItem('@reminder_session_times');
+                            const sessionTimes = sessionTimesJson ? JSON.parse(sessionTimesJson) : [{ hour: 8, minute: 0 }];
+                            setReminderSessionCount(sessionCount);
+                            setReminderSessionTimes(sessionTimes);
+                            await SalahLockModule.scheduleMultipleReminderLocks(sessionTimes.slice(0, sessionCount), 30);
+                            console.log("Auto-synced multi-session reminder locks on startup");
                         }
                     }
                 }
@@ -882,31 +937,15 @@ function AppContent() {
     useEffect(() => {
         const initDailyReminder = async () => {
             try {
-                // Load saved reminder time
-                const savedTime = await getSavedReminderTime();
-                setDailyReminderTime(savedTime);
-
-                // Check if reminder is enabled
-                const enabled = await isReminderEnabled();
-                setIsReminderOn(enabled);
-
-                // Generate today's content
-                generateDailyContent();
-
                 // Set up notification tap handler
-                const unsubscribe = setupNotificationResponseHandler(async () => {
-                    // Check if daily reminder lock is active
-                    try {
-                        const active = await SalahLockModule.checkIsShieldActive();
-                        const lockType = await SalahLockModule.getLockType();
-                        if (active && lockType === 'dailyReminder') {
-                            setShowSpiritualFlow(true);
-                            return;
-                        }
-                    } catch (e) {
-                        // Fall through to regular reminder
-                    }
-                    setShowDailyReminder(true);
+                const unsubscribe = setupNotificationResponseHandler(async (data) => {
+                    const sessionIdx = data?.sessionIndex ?? 0;
+                    // Apply lock immediately when notification is tapped
+                    // (don't wait for DeviceActivity timing - they are independent systems)
+                    try { await SalahLockModule.setLockType('dailyReminder'); } catch (_) {}
+                    try { await SalahLockModule.testBlockApps(); } catch (_) {}
+                    setActiveReminderSessionIndex(sessionIdx);
+                    setShowSpiritualFlow(true);
                 });
 
                 return unsubscribe;
@@ -921,6 +960,43 @@ function AppContent() {
                 cleanup.then(fn => fn && fn());
             }
         };
+    }, []);
+
+    // Initialize multi-session reminder content on startup
+    useEffect(() => {
+        const initReminderSessions = async () => {
+            try {
+                const countStr = await AsyncStorage.getItem('@reminder_session_count');
+                const count = countStr ? parseInt(countStr, 10) : 1;
+                setReminderSessionCount(count);
+
+                const timesJson = await AsyncStorage.getItem('@reminder_session_times');
+                const times = timesJson ? JSON.parse(timesJson) : [{ hour: 8, minute: 0 }];
+                setReminderSessionTimes(times);
+
+                // Regenerate content if stale (new day)
+                const today = new Date().toISOString().split('T')[0];
+                const contentDate = await AsyncStorage.getItem('@reminder_session_content_date');
+                const contentJson = await AsyncStorage.getItem('@reminder_session_content');
+
+                let content;
+                if (contentDate !== today || !contentJson) {
+                    content = generateReminderSessionContent(count);
+                    setReminderSessionContent(content);
+                    await AsyncStorage.setItem('@reminder_session_content', JSON.stringify(content));
+                    await AsyncStorage.setItem('@reminder_session_content_date', today);
+                } else {
+                    content = JSON.parse(contentJson);
+                    setReminderSessionContent(content);
+                }
+
+                // Use first session content for the "View Today's Reminder" preview
+                if (content[0]) setTodaysDailyContent(content[0]);
+            } catch (e) {
+                console.error('Reminder sessions init error:', e);
+            }
+        };
+        initReminderSessions();
     }, []);
 
     // Load prayer notification preference on startup
@@ -950,50 +1026,49 @@ function AppContent() {
         }
     }, [prayerTimes, prayerNotificationsEnabled]);
 
-    // Generate daily content (Quran verse and dua)
-    const generateDailyContent = () => {
-        const verse = getDailyVerse();
+    // Generate unique verse+dua pairs for each reminder session (Fisher-Yates shuffle)
+    const generateReminderSessionContent = (count) => {
+        const allVerses = getAllVerses();
         const allDuas = getAllDuas();
-        // Get a random dua based on day of year
-        const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
-        const duaIndex = dayOfYear % allDuas.length;
-        const dua = allDuas[duaIndex];
-
-        setTodaysDailyContent({ verse, dua });
+        const shuffledVerses = [...allVerses].sort(() => Math.random() - 0.5);
+        const shuffledDuas = [...allDuas].sort(() => Math.random() - 0.5);
+        const content = [];
+        for (let i = 0; i < count; i++) {
+            content.push({
+                verse: shuffledVerses[i % shuffledVerses.length],
+                dua: shuffledDuas[i % shuffledDuas.length],
+            });
+        }
+        return content;
     };
 
-    // Handle time picker change (only updates temp state while picking)
-    const handleReminderTimeChange = (event, selectedDate) => {
+    // Schedule multi-session reminder locks (native DeviceActivity + notifications)
+    const scheduleReminderLocks = async (sessions) => {
+        try {
+            await SalahLockModule.scheduleMultipleReminderLocks(sessions, 30);
+            await scheduleMultipleReminderNotifications(sessions);
+        } catch (e) {
+            console.error('Reminder lock scheduling error:', e);
+        }
+    };
+
+    const handleReminderSessionTimeChange = (_event, selectedDate) => {
         if (selectedDate) {
-            const hour = selectedDate.getHours();
-            const minute = selectedDate.getMinutes();
-            setTempPickerTime({ hour, minute });
+            setTempReminderPickerTime({
+                hour: selectedDate.getHours(),
+                minute: selectedDate.getMinutes(),
+            });
         }
     };
 
-    // Confirm the selected time and schedule notification
-    const confirmReminderTime = async () => {
-        setShowTimePicker(false);
-        setDailyReminderTime(tempPickerTime);
-
-        // Schedule the notification
-        const success = await scheduleDailyNotification(tempPickerTime.hour, tempPickerTime.minute);
-        if (success) {
-            setIsReminderOn(true);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-
-        // Also schedule app lock for daily reminder (separate from prayer locks)
-        if (hasScreenTimePermission && isAppsSelected) {
-            try {
-                await SalahLockModule.scheduleDailyReminderLock(
-                    tempPickerTime.hour, tempPickerTime.minute, 60
-                );
-                console.log("Daily reminder lock scheduled");
-            } catch (e) {
-                console.error("Daily reminder lock schedule error:", e);
-            }
-        }
+    const confirmReminderSessionTime = () => {
+        if (editingReminderSessionIndex === null) return;
+        const updated = reminderSessionTimes.map((t, i) =>
+            i === editingReminderSessionIndex ? { ...tempReminderPickerTime } : t
+        );
+        setReminderSessionTimes(updated);
+        setShowReminderTimePicker(false);
+        setEditingReminderSessionIndex(null);
     };
 
     // Complete onboarding and auto-enable prayer notifications
@@ -1298,6 +1373,7 @@ function AppContent() {
                     </Animated.View>
                 )}
 
+
                 {/* Success Message Overlay */}
                 {unlockedMessage && (
                     <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.successOverlay}>
@@ -1324,34 +1400,32 @@ function AppContent() {
                             <Text style={styles.reminderTitle}>Daily Spiritual Reminder</Text>
                         </View>
                         <Text style={styles.reminderDescription}>
-                            Get daily Quran verse, dua, and dhikr
+                            {reminderSessionCount > 1
+                                ? `${reminderSessionCount} sessions scheduled daily`
+                                : 'Get daily Quran verse, dua, and dhikr'}
                         </Text>
                     </View>
                     <TouchableOpacity
                         style={styles.reminderTimeButton}
                         onPress={() => {
                             if (!isSubscribed) {
-                                showPaywall('feature_reminders', () => {
-                                    setTempPickerTime(dailyReminderTime);
-                                    setShowTimePicker(true);
-                                });
+                                showPaywall('feature_reminders', () => setShowReminderSettings(true));
                                 return;
                             }
-                            setTempPickerTime(dailyReminderTime);
-                            setShowTimePicker(true);
+                            setShowReminderSettings(true);
                         }}
                     >
                         <View style={styles.reminderTimeInfo}>
                             <Text style={styles.reminderTimeLabel}>
-                                {isReminderOn ? 'Reminder set for' : 'Set reminder time'}
+                                {reminderSessionCount > 1 ? 'Manage Sessions' : 'Set reminder time'}
                             </Text>
                             <Text style={styles.reminderTimeValue}>
-                                {formatNotificationTime(dailyReminderTime.hour, dailyReminderTime.minute)}
+                                {reminderSessionTimes.slice(0, reminderSessionCount).map(t => formatNotificationTime(t.hour, t.minute)).join(' · ')}
                             </Text>
                         </View>
                         <Ionicons name="chevron-forward" size={20} color={COLORS.tertiaryText} />
                     </TouchableOpacity>
-                    {todaysDailyContent && (
+                    {reminderSessionContent[0] && (
                         <TouchableOpacity
                             style={styles.viewReminderButton}
                             onPress={() => {
@@ -1366,39 +1440,6 @@ function AppContent() {
                         </TouchableOpacity>
                     )}
                 </View>
-
-                {/* Time Picker Modal */}
-                <Modal
-                    visible={showTimePicker}
-                    transparent={true}
-                    animationType="slide"
-                    onRequestClose={() => setShowTimePicker(false)}
-                >
-                    <View style={styles.timePickerModalOverlay}>
-                        <View style={styles.timePickerModalContent}>
-                            <View style={styles.timePickerHeader}>
-                                <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                                    <Text style={styles.timePickerCancel}>Cancel</Text>
-                                </TouchableOpacity>
-                                <Text style={styles.timePickerTitle}>Set Reminder Time</Text>
-                                <TouchableOpacity onPress={confirmReminderTime}>
-                                    <Text style={styles.timePickerDone}>Done</Text>
-                                </TouchableOpacity>
-                            </View>
-                            <View style={styles.timePickerContainer}>
-                                <DateTimePicker
-                                    value={new Date(2024, 0, 1, tempPickerTime.hour, tempPickerTime.minute)}
-                                    mode="time"
-                                    is24Hour={false}
-                                    display="spinner"
-                                    onChange={handleReminderTimeChange}
-                                    textColor={COLORS.black}
-                                    style={styles.timePicker}
-                                />
-                            </View>
-                        </View>
-                    </View>
-                </Modal>
 
                 {/* Today's Prayers Section */}
                 <TouchableOpacity
@@ -1806,6 +1847,142 @@ function AppContent() {
                     </ScrollView>
                 )}
             </Animated.View>
+        );
+    }
+
+    function renderReminderSettings() {
+        const sessionSlots = Array.from({ length: reminderSessionCount }, (_, i) =>
+            reminderSessionTimes[i] || { hour: 8, minute: 0 }
+        );
+
+        const saveAndSchedule = async () => {
+            try {
+                const trimmedTimes = sessionSlots;
+                await AsyncStorage.setItem('@reminder_sessions_enabled', 'true');
+                await AsyncStorage.setItem('@reminder_session_count', String(reminderSessionCount));
+                await AsyncStorage.setItem('@reminder_session_times', JSON.stringify(trimmedTimes));
+
+                const newContent = generateReminderSessionContent(reminderSessionCount);
+                setReminderSessionContent(newContent);
+                setTodaysDailyContent(newContent[0] || null);
+                await AsyncStorage.setItem('@reminder_session_content', JSON.stringify(newContent));
+                await AsyncStorage.setItem('@reminder_session_content_date', new Date().toISOString().split('T')[0]);
+
+                await scheduleReminderLocks(trimmedTimes);
+                // Diagnostic: verify schedules registered
+                try {
+                    const schedules = await SalahLockModule.getActiveSchedules();
+                    const scheduleLogs = await SalahLockModule.getScheduleLogs();
+                    const recentLogs = scheduleLogs.slice(-5).join('\n');
+                    console.log('[Reminder] Active DeviceActivity schedules after save:', schedules);
+                    Alert.alert(
+                        'Schedule Debug',
+                        `Active schedules: ${JSON.stringify(schedules)}\n\nRecent logs:\n${recentLogs}`,
+                        [{ text: 'OK' }]
+                    );
+                } catch (_) {}
+                setShowReminderSettings(false);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (e) {
+                console.error('Save reminder sessions error:', e);
+            }
+        };
+
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }}>
+                {/* Header */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+                    <TouchableOpacity onPress={() => setShowReminderSettings(false)}>
+                        <Ionicons name="arrow-back" size={24} color={COLORS.black} />
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 18, fontWeight: '600', color: COLORS.black }}>Daily Spiritual Reminder</Text>
+                    <TouchableOpacity onPress={saveAndSchedule}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: COLORS.accent }}>Save</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <ScrollView contentContainerStyle={{ padding: 20 }}>
+                    {/* Session Count */}
+                    <View style={[styles.reminderSection, { marginBottom: 20 }]}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: COLORS.black, marginBottom: 12 }}>Number of Sessions</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+                            <TouchableOpacity
+                                onPress={() => { if (reminderSessionCount > 1) setReminderSessionCount(reminderSessionCount - 1); }}
+                                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.offWhite, alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                <Ionicons name="remove" size={22} color={COLORS.black} />
+                            </TouchableOpacity>
+                            <Text style={{ fontSize: 28, fontWeight: '700', color: COLORS.black, minWidth: 32, textAlign: 'center' }}>{reminderSessionCount}</Text>
+                            <TouchableOpacity
+                                onPress={() => { if (reminderSessionCount < 10) setReminderSessionCount(reminderSessionCount + 1); }}
+                                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.offWhite, alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                <Ionicons name="add" size={22} color={COLORS.black} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={{ fontSize: 12, color: COLORS.tertiaryText, textAlign: 'center', marginTop: 8 }}>1–10 sessions per day</Text>
+                    </View>
+
+                    {/* Session Times */}
+                    <View style={styles.reminderSection}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: COLORS.black, marginBottom: 12 }}>Session Times</Text>
+                        {sessionSlots.map((time, i) => (
+                            <TouchableOpacity
+                                key={i}
+                                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: i < sessionSlots.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}
+                                onPress={() => {
+                                    setEditingReminderSessionIndex(i);
+                                    setTempReminderPickerTime(time);
+                                    setShowReminderTimePicker(true);
+                                }}
+                            >
+                                <Text style={{ fontSize: 15, color: COLORS.black }}>Session {i + 1}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Text style={{ fontSize: 15, fontWeight: '500', color: COLORS.accent }}>{formatNotificationTime(time.hour, time.minute)}</Text>
+                                    <Ionicons name="chevron-forward" size={18} color={COLORS.tertiaryText} />
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+
+                    <Text style={{ fontSize: 12, color: COLORS.tertiaryText, textAlign: 'center', marginTop: 16, lineHeight: 18 }}>
+                        Each session shows a unique Quran verse, dua, and dhikr, and locks your selected apps for a few minutes.
+                    </Text>
+                </ScrollView>
+
+                {/* Session Time Picker Modal */}
+                <Modal
+                    visible={showReminderTimePicker}
+                    transparent={true}
+                    animationType="slide"
+                    onRequestClose={() => setShowReminderTimePicker(false)}
+                >
+                    <View style={styles.timePickerModalOverlay}>
+                        <View style={styles.timePickerModalContent}>
+                            <View style={styles.timePickerHeader}>
+                                <TouchableOpacity onPress={() => setShowReminderTimePicker(false)}>
+                                    <Text style={styles.timePickerCancel}>Cancel</Text>
+                                </TouchableOpacity>
+                                <Text style={styles.timePickerTitle}>Session {editingReminderSessionIndex !== null ? editingReminderSessionIndex + 1 : ''} Time</Text>
+                                <TouchableOpacity onPress={confirmReminderSessionTime}>
+                                    <Text style={styles.timePickerDone}>Done</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <View style={styles.timePickerContainer}>
+                                <DateTimePicker
+                                    value={new Date(2024, 0, 1, tempReminderPickerTime.hour, tempReminderPickerTime.minute)}
+                                    mode="time"
+                                    is24Hour={false}
+                                    display="spinner"
+                                    onChange={handleReminderSessionTimeChange}
+                                    textColor={COLORS.black}
+                                    style={styles.timePicker}
+                                />
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+            </SafeAreaView>
         );
     }
 
@@ -3105,13 +3282,23 @@ function AppContent() {
                     />
                 )}
 
-                {/* Spiritual Flow Screen (Daily Reminder Lock) */}
-                {showSpiritualFlow && todaysDailyContent && (
+                {/* Spiritual Flow Screen (Daily Reminder Lock - single or multi-session) */}
+                {showSpiritualFlow && (reminderSessionContent[activeReminderSessionIndex] || todaysDailyContent) && (
                     <SpiritualFlowScreen
-                        content={todaysDailyContent}
+                        content={reminderSessionContent[activeReminderSessionIndex] || todaysDailyContent}
                         onComplete={handleSpiritualFlowComplete}
+                        autoComplete={reminderSessionCount > 1}
                     />
                 )}
+
+                {/* Daily Reminder Sessions Settings Modal */}
+                <Modal
+                    visible={showReminderSettings}
+                    animationType="slide"
+                    onRequestClose={() => setShowReminderSettings(false)}
+                >
+                    {renderReminderSettings()}
+                </Modal>
             </SafeAreaView>
         );
     }
