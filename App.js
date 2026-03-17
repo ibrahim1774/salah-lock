@@ -1043,7 +1043,12 @@ function AppContent() {
 
     const confirmReminderSessionTime = () => {
         if (editingReminderSessionIndex === null) return;
-        const updated = reminderSessionTimes.map((t, i) =>
+        // Expand array to cover the edited index before mapping
+        const expanded = Array.from(
+            { length: Math.max(reminderSessionTimes.length, editingReminderSessionIndex + 1) },
+            (_, i) => reminderSessionTimes[i] || { hour: 8, minute: 0 }
+        );
+        const updated = expanded.map((t, i) =>
             i === editingReminderSessionIndex ? { ...tempReminderPickerTime } : t
         );
         setReminderSessionTimes(updated);
