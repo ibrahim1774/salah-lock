@@ -812,26 +812,6 @@ function AppContent() {
     useEffect(() => {
         const handleAppStateChange = async (nextAppState) => {
             if (nextAppState === 'active') {
-                // Re-register reminder schedules in case they were cleared
-                try {
-                    const sessionEnabled = await AsyncStorage.getItem('@reminder_sessions_enabled');
-                    if (sessionEnabled === 'true') {
-                        const countStr = await AsyncStorage.getItem('@reminder_session_count');
-                        const count = countStr ? parseInt(countStr, 10) : 1;
-                        const timesJson = await AsyncStorage.getItem('@reminder_session_times');
-                        const times = timesJson ? JSON.parse(timesJson) : [{ hour: 8, minute: 0 }];
-                        await SalahLockModule.scheduleMultipleReminderLocks(times.slice(0, count), 30);
-                    }
-                } catch (e) {}
-                // Dump extension logs to Metro console
-                try {
-                    const extLogs = await SalahLockModule.getExtensionLogs();
-                    if (extLogs && extLogs.length > 0) {
-                        console.log('[Extension logs on foreground]', extLogs.slice(-5).join('\n'));
-                    } else {
-                        console.log('[Extension logs on foreground] EMPTY - extension has never fired');
-                    }
-                } catch (e) {}
                 // Immediately check lock status instead of waiting for 5s interval
                 try {
                     const active = await SalahLockModule.checkIsShieldActive();
@@ -1869,18 +1849,6 @@ function AppContent() {
                 await AsyncStorage.setItem('@reminder_session_content_date', new Date().toISOString().split('T')[0]);
 
                 await scheduleReminderLocks(trimmedTimes);
-                // Diagnostic: verify schedules registered
-                try {
-                    const schedules = await SalahLockModule.getActiveSchedules();
-                    const scheduleLogs = await SalahLockModule.getScheduleLogs();
-                    const recentLogs = scheduleLogs.slice(-5).join('\n');
-                    console.log('[Reminder] Active DeviceActivity schedules after save:', schedules);
-                    Alert.alert(
-                        'Schedule Debug',
-                        `Active schedules: ${JSON.stringify(schedules)}\n\nRecent logs:\n${recentLogs}`,
-                        [{ text: 'OK' }]
-                    );
-                } catch (_) {}
                 setShowReminderSettings(false);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (e) {
