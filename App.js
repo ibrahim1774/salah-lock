@@ -894,7 +894,10 @@ function AppContent() {
                             const sessionTimes = sessionTimesJson ? JSON.parse(sessionTimesJson) : [{ hour: 8, minute: 0 }];
                             setReminderSessionCount(sessionCount);
                             setReminderSessionTimes(sessionTimes);
-                            await SalahLockModule.scheduleMultipleReminderLocks(sessionTimes.slice(0, sessionCount), 30);
+                            const sessionsToSchedule = sessionTimes
+                                .slice(0, sessionCount)
+                                .filter(({ hour, minute }) => !isCurrentlyInWindow(hour, minute, 30));
+                            await SalahLockModule.scheduleMultipleReminderLocks(sessionsToSchedule, 30);
                             console.log("Auto-synced multi-session reminder locks on startup");
                         }
                     }
@@ -1022,10 +1025,22 @@ function AppContent() {
         return content;
     };
 
+    // Returns true if the current time falls within [hour:minute, hour:minute+durationMin)
+    const isCurrentlyInWindow = (hour, minute, durationMin = 30) => {
+        const now = new Date();
+        const currentMin = now.getHours() * 60 + now.getMinutes();
+        const startMin = hour * 60 + minute;
+        const endMin = startMin + durationMin;
+        return currentMin >= startMin && currentMin < endMin;
+    };
+
     // Schedule multi-session reminder locks (native DeviceActivity + notifications)
     const scheduleReminderLocks = async (sessions) => {
         try {
-            await SalahLockModule.scheduleMultipleReminderLocks(sessions, 30);
+            const sessionsToSchedule = sessions.filter(
+                ({ hour, minute }) => !isCurrentlyInWindow(hour, minute, 30)
+            );
+            await SalahLockModule.scheduleMultipleReminderLocks(sessionsToSchedule, 30);
             await scheduleMultipleReminderNotifications(sessions);
         } catch (e) {
             console.error('Reminder lock scheduling error:', e);
