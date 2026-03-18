@@ -355,6 +355,23 @@ class SalahLockModule: NSObject {
         resolve(true)
     }
 
+    // MARK: - Prayer Verification Method
+
+    @objc func setPrayerVerificationMethod(_ method: String, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        userDefaults?.set(method, forKey: "prayerVerificationMethod")
+        resolve(true)
+    }
+
+    @objc func checkPendingPrayerDetection(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let pending = userDefaults?.bool(forKey: "pendingPrayerDetection") ?? false
+        resolve(pending)
+    }
+
+    @objc func clearPendingPrayerDetection(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        userDefaults?.removeObject(forKey: "pendingPrayerDetection")
+        resolve(true)
+    }
+
     // MARK: - Dhikr Session Scheduling
 
     @objc func scheduleDhikrLocks(_ sessions: NSArray, duration: Int, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {

@@ -55,6 +55,12 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         }
 
         // Default: Prayer lock
+        let verificationMethod = userDefaults?.string(forKey: "prayerVerificationMethod") ?? "simple"
+        let subtitleText = verificationMethod == "detection"
+            ? "Open Deen Taqwa to verify your prayer with camera"
+            : "\"Verily, in the remembrance of Allah do hearts find rest.\" - Quran 13:28"
+        let buttonText = verificationMethod == "detection" ? "I'm Ready to Pray" : "I will pray now"
+
         let icon = UIImage(systemName: "moon.stars.fill")
         return ShieldConfiguration(
             backgroundBlurStyle: .systemUltraThinMaterial,
@@ -65,11 +71,11 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
                 color: .black
             ),
             subtitle: ShieldConfiguration.Label(
-                text: "\"Verily, in the remembrance of Allah do hearts find rest.\" - Quran 13:28",
+                text: subtitleText,
                 color: .gray
             ),
             primaryButtonLabel: ShieldConfiguration.Label(
-                text: "I will pray now",
+                text: buttonText,
                 color: .white
             ),
             primaryButtonBackgroundColor: UIColor(red: 0.2, green: 0.7, blue: 0.4, alpha: 1.0),

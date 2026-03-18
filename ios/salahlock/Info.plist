@@ -85,5 +85,7 @@
     <string>Automatic</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSCameraUsageDescription</key>
+    <string>Allow Deen Taqwa to access your camera to verify prayer movements on your device.</string>
   </dict>
 </plist>

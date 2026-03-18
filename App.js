@@ -39,6 +39,7 @@ import Svg, { Circle } from 'react-native-svg';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import DailySpiritualReminder from './components/DailySpiritualReminder';
 import SpiritualFlowScreen from './components/SpiritualFlowScreen';
+import PrayerDetectionScreen from './components/PrayerDetectionScreen';
 import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider, usePostHog } from 'posthog-react-native';
 import { useSubscription } from './hooks/useSuperwallSubscription';
@@ -421,6 +422,10 @@ function AppContent() {
     const [editingReminderSessionIndex, setEditingReminderSessionIndex] = useState(null);
     const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
     const [tempReminderPickerTime, setTempReminderPickerTime] = useState({ hour: 8, minute: 0 });
+
+    // Prayer verification method: 'simple' (default) or 'detection' (camera)
+    const [prayerVerificationMethod, setPrayerVerificationMethod] = useState('simple');
+    const [showPrayerDetection, setShowPrayerDetection] = useState(false);
 
     // Prayer notification state
     const [prayerNotificationsEnabled, setPrayerNotificationsEnabledState] = useState(true);
@@ -812,6 +817,14 @@ function AppContent() {
     useEffect(() => {
         const handleAppStateChange = async (nextAppState) => {
             if (nextAppState === 'active') {
+                // Check if ShieldAction set a pending prayer detection flag
+                try {
+                    const pending = await SalahLockModule.checkPendingPrayerDetection();
+                    if (pending) {
+                        await SalahLockModule.clearPendingPrayerDetection();
+                        setShowPrayerDetection(true);
+                    }
+                } catch (_) {}
                 // Immediately check lock status instead of waiting for 5s interval
                 try {
                     const active = await SalahLockModule.checkIsShieldActive();
@@ -870,6 +883,13 @@ function AppContent() {
     useEffect(() => {
         const checkExistingSetup = async () => {
             try {
+                // Load prayer verification method preference
+                const savedMethod = await AsyncStorage.getItem('@prayer_verification_method');
+                if (savedMethod) {
+                    setPrayerVerificationMethod(savedMethod);
+                    try { await SalahLockModule.setPrayerVerificationMethod(savedMethod); } catch (_) {}
+                }
+
                 // Check if Screen Time permission was previously granted
                 const permissionStatus = await SalahLockModule.checkScreenTimePermission();
                 const hasPermission = permissionStatus === 'approved';
@@ -1357,9 +1377,20 @@ function AppContent() {
                 {isCurrentlyLocked && !isDailyReminderLock && (
                     <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.lockedBanner}>
                         <Text style={styles.lockedBannerText}>Apps are locked for prayer time</Text>
-                        <TouchableOpacity style={styles.iHavePrayedButton} onPress={handleIHavePrayed}>
-                            <Text style={styles.iHavePrayedButtonText}>I Have Prayed</Text>
-                        </TouchableOpacity>
+                        {prayerVerificationMethod === 'detection' ? (
+                            <>
+                                <TouchableOpacity style={styles.iHavePrayedButton} onPress={() => setShowPrayerDetection(true)}>
+                                    <Text style={styles.iHavePrayedButtonText}>Start Prayer</Text>
+                                </TouchableOpacity>
+                                <Text style={{ fontSize: 12, color: COLORS.tertiaryText, marginTop: 6, textAlign: 'center' }}>
+                                    Your prayer will be verified using your camera
+                                </Text>
+                            </>
+                        ) : (
+                            <TouchableOpacity style={styles.iHavePrayedButton} onPress={handleIHavePrayed}>
+                                <Text style={styles.iHavePrayedButtonText}>I Have Prayed</Text>
+                            </TouchableOpacity>
+                        )}
                     </Animated.View>
                 )}
 
@@ -2056,6 +2087,87 @@ function AppContent() {
                     </Card>
                 </View>
 
+                {/* Prayer Verification */}
+                <View style={styles.settingsSection}>
+                    <Text style={styles.settingsSectionTitle}>PRAYER VERIFICATION</Text>
+                    <Card style={styles.settingsSectionCard}>
+                        <TouchableOpacity
+                            style={styles.settingsItemDetailed}
+                            onPress={async () => {
+                                setPrayerVerificationMethod('simple');
+                                await AsyncStorage.setItem('@prayer_verification_method', 'simple');
+                                try { await SalahLockModule.setPrayerVerificationMethod('simple'); } catch (_) {}
+                            }}
+                        >
+                            <View style={styles.settingsItemLeftDetailed}>
+                                <View style={styles.settingsIconContainer}>
+                                    <Ionicons
+                                        name={prayerVerificationMethod === 'simple' ? 'radio-button-on' : 'radio-button-off'}
+                                        size={20} color={COLORS.black}
+                                    />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingsItemNameDetailed}>Simple Confirmation</Text>
+                                    <Text style={styles.settingsLocationSubtitle}>Tap "I have prayed" to unlock</Text>
+                                </View>
+                            </View>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.settingsItemDetailed}
+                            onPress={async () => {
+                                setPrayerVerificationMethod('detection');
+                                await AsyncStorage.setItem('@prayer_verification_method', 'detection');
+                                try { await SalahLockModule.setPrayerVerificationMethod('detection'); } catch (_) {}
+                            }}
+                        >
+                            <View style={styles.settingsItemLeftDetailed}>
+                                <View style={styles.settingsIconContainer}>
+                                    <Ionicons
+                                        name={prayerVerificationMethod === 'detection' ? 'radio-button-on' : 'radio-button-off'}
+                                        size={20} color={COLORS.black}
+                                    />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingsItemNameDetailed}>Prayer Detection</Text>
+                                    <Text style={styles.settingsLocationSubtitle}>Camera verifies through photos of sink and place where you're going to pray</Text>
+                                </View>
+                            </View>
+                        </TouchableOpacity>
+                    </Card>
+                </View>
+
+                {/* Developer Tools */}
+                <View style={styles.settingsSection}>
+                    <Text style={styles.settingsSectionTitle}>DEVELOPER TOOLS</Text>
+                    <Card style={styles.settingsSectionCard}>
+                        <TouchableOpacity
+                            style={styles.settingsItemDetailed}
+                            onPress={async () => {
+                                try {
+                                    await SalahLockModule.clearLockType();
+                                    await SalahLockModule.testBlockApps();
+                                    setIsCurrentlyLocked(true);
+                                    setIsDailyReminderLock(false);
+                                } catch (e) {
+                                    console.error('Test lock error:', e);
+                                }
+                            }}
+                        >
+                            <View style={styles.settingsItemLeftDetailed}>
+                                <View style={styles.settingsIconContainer}>
+                                    <Ionicons name="bug-outline" size={20} color={COLORS.black} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingsItemNameDetailed}>Test Prayer Lock (Dev)</Text>
+                                    <Text style={styles.settingsLocationSubtitle}>Triggers a fake prayer lock for testing</Text>
+                                </View>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={COLORS.tertiaryText} />
+                        </TouchableOpacity>
+                    </Card>
+                </View>
+
                 {/* Premium */}
                 <View style={styles.settingsSection}>
                     <Text style={styles.settingsSectionTitle}>PREMIUM</Text>
@@ -2140,10 +2252,6 @@ function AppContent() {
                         </TouchableOpacity>
                     </Card>
                 </View>
-
-                <TouchableOpacity style={styles.logoutButton}>
-                    <Text style={styles.logoutText}>Sign Out</Text>
-                </TouchableOpacity>
 
                 <TouchableOpacity style={styles.resetButton} onPress={handleResetApp}>
                     <Text style={styles.resetButtonText}>Reset App</Text>
@@ -3267,6 +3375,14 @@ function AppContent() {
                     <DailySpiritualReminder
                         content={todaysDailyContent}
                         onDismiss={() => setShowDailyReminder(false)}
+                    />
+                )}
+
+                {/* Prayer Detection Screen (shown when prayer detection mode is active) */}
+                {showPrayerDetection && (
+                    <PrayerDetectionScreen
+                        onComplete={() => { setShowPrayerDetection(false); handleIHavePrayed(); }}
+                        onManualUnlock={() => { setShowPrayerDetection(false); handleIHavePrayed(); }}
                     />
                 )}
 

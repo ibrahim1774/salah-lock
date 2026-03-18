@@ -33,6 +33,11 @@ RCT_EXTERN_METHOD(getLockType:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromi
 RCT_EXTERN_METHOD(clearLockType:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(setLockType:(NSString *)type resolve:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 
+// Prayer Verification
+RCT_EXTERN_METHOD(setPrayerVerificationMethod:(NSString *)method resolve:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(checkPendingPrayerDetection:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(clearPendingPrayerDetection:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+
 // Dhikr Session Scheduling
 RCT_EXTERN_METHOD(scheduleDhikrLocks:(NSArray *)sessions duration:(int)duration resolve:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(cancelDhikrLocks:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)

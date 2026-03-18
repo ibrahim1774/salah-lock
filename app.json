@@ -50,6 +50,12 @@
           "locationWhenInUsePermission": "Allow Salah Lock to access your location to provide accurate prayer times."
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Deen Taqwa to access your camera to verify prayer movements on your device."
+        }
+      ],
       "expo-build-properties",
       "@react-native-community/datetimepicker"
     ],
