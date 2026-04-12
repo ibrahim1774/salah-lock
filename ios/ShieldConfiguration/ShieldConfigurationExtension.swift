@@ -42,7 +42,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
                     color: .black
                 ),
                 subtitle: ShieldConfiguration.Label(
-                    text: "Open Deen Taqwa to begin your spiritual journey",
+                    text: "Open Deen Taqwa to begin your dhikr journey",
                     color: .gray
                 ),
                 primaryButtonLabel: ShieldConfiguration.Label(

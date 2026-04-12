@@ -1,4 +1,4 @@
-// Full-screen Daily Spiritual Reminder component
+// Full-screen Daily Dhikr Reminder component
 // Displays Quran verse, Dua, and Dhikr for the day
 
 import React from 'react';
@@ -70,7 +70,7 @@ const DailySpiritualReminder = ({ content, onDismiss }) => {
       <SafeAreaView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Daily Spiritual Reminder</Text>
+          <Text style={styles.headerTitle}>Daily Dhikr Reminder</Text>
           <Text style={styles.headerDate}>
             {new Date().toLocaleDateString('en-US', {
               weekday: 'long',

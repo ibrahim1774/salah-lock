@@ -37,6 +37,7 @@ import Animated, {
 import LearnNavigator from './components/learn/LearnNavigator';
 import Svg, { Circle } from 'react-native-svg';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useCameraPermissions } from 'expo-camera';
 import DailySpiritualReminder from './components/DailySpiritualReminder';
 import SpiritualFlowScreen from './components/SpiritualFlowScreen';
 import PrayerDetectionScreen from './components/PrayerDetectionScreen';
@@ -115,7 +116,7 @@ const GOALS_OPTIONS = [
     { label: 'Deepen my focus (Khushoo)' },
     { label: 'Read Quran more often' },
     { label: 'Wake up for Fajr' },
-    { label: 'Limit screen time distractions' },
+    { label: 'Increase daily dhikr and duas' },
     { label: 'Build a consistent habit' },
 ];
 
@@ -397,6 +398,9 @@ function AppContent() {
     const [isFetchingLocation, setIsFetchingLocation] = useState(false);
     const [prayerError, setPrayerError] = useState(null);
     const [isChangingLocation, setIsChangingLocation] = useState(false);
+    const [savedLatitude, setSavedLatitude] = useState(null);
+    const [savedLongitude, setSavedLongitude] = useState(null);
+    const [showOnboardingCitySearch, setShowOnboardingCitySearch] = useState(false);
     const searchTimeout = useRef(null);
 
     const [hasScreenTimePermission, setHasScreenTimePermission] = useState(false);
@@ -405,7 +409,7 @@ function AppContent() {
     const [isCurrentlyLocked, setIsCurrentlyLocked] = useState(false);
     const [unlockedMessage, setUnlockedMessage] = useState(null);
 
-    // Daily Spiritual Reminder state
+    // Daily Dhikr Reminder state
     const [showDailyReminder, setShowDailyReminder] = useState(false);
     const [todaysDailyContent, setTodaysDailyContent] = useState(null);
 
@@ -426,6 +430,9 @@ function AppContent() {
     // Prayer verification method: 'simple' (default) or 'detection' (camera)
     const [prayerVerificationMethod, setPrayerVerificationMethod] = useState('simple');
     const [showPrayerDetection, setShowPrayerDetection] = useState(false);
+
+    // Camera permission for onboarding screen 26
+    const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
     // Prayer notification state
     const [prayerNotificationsEnabled, setPrayerNotificationsEnabledState] = useState(true);
@@ -477,7 +484,9 @@ function AppContent() {
                     const suggestions = data.data.map(city => ({
                         name: city.name,
                         country: city.country,
-                        displayName: `${city.name}, ${city.country}`
+                        displayName: `${city.name}, ${city.country}`,
+                        latitude: city.latitude,
+                        longitude: city.longitude,
                     }));
                     setCitySuggestions(suggestions);
                     setShowSuggestions(true);
@@ -510,7 +519,9 @@ function AppContent() {
                         return {
                             name: name,
                             country: country,
-                            displayName: `${name}, ${country}`
+                            displayName: `${name}, ${country}`,
+                            latitude: parseFloat(item.lat),
+                            longitude: parseFloat(item.lon),
                         };
                     }).filter(item => item.name);
 
@@ -555,10 +566,21 @@ function AppContent() {
 
                 setPrayerTimes(newTimes);
                 setLocationMode('gps');
+                setSavedLatitude(latitude);
+                setSavedLongitude(longitude);
 
                 const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
                 if (geocode[0]) {
-                    setLocation(`${geocode[0].city || geocode[0].region}, ${geocode[0].country}`);
+                    const displayName = `${geocode[0].city || geocode[0].region}, ${geocode[0].country}`;
+                    setLocation(displayName);
+                    await AsyncStorage.multiSet([
+                        ['@location_latitude', String(latitude)],
+                        ['@location_longitude', String(longitude)],
+                        ['@location_mode', 'gps'],
+                        ['@location_city', geocode[0].city || geocode[0].region || ''],
+                        ['@location_country', geocode[0].country || ''],
+                        ['@location_display', displayName],
+                    ]);
                 }
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 return true;
@@ -593,10 +615,26 @@ function AppContent() {
                 };
 
                 setPrayerTimes(newTimes);
-                setLocation(`${cityName}, ${country}`);
+                const displayName = `${cityName}, ${country}`;
+                setLocation(displayName);
                 setLocationMode('manual');
                 setCityQuery('');
                 setShowSuggestions(false);
+
+                // Extract and persist coordinates from Aladhan response
+                const resolvedLat = data.data.meta.latitude;
+                const resolvedLng = data.data.meta.longitude;
+                setSavedLatitude(resolvedLat);
+                setSavedLongitude(resolvedLng);
+                await AsyncStorage.multiSet([
+                    ['@location_latitude', String(resolvedLat)],
+                    ['@location_longitude', String(resolvedLng)],
+                    ['@location_mode', 'manual'],
+                    ['@location_city', cityName],
+                    ['@location_country', country],
+                    ['@location_display', displayName],
+                ]);
+
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } else {
                 setPrayerError(`Could not find times for ${cityName}. Please try a different city name.`);
@@ -620,6 +658,19 @@ function AppContent() {
         // Auto-reschedule prayers when location/times change
         if (hasScreenTimePermission && isAppsSelected) {
             syncPrayerSchedules();
+        }
+    };
+
+    const selectCityOnboarding = async (city) => {
+        setCityQuery(city.displayName);
+        setShowSuggestions(false);
+        setShowOnboardingCitySearch(false);
+        await fetchPrayerTimesByCity(city.name, city.country);
+        // Skip screen 25 (loading) — jump to where next() from 25 goes
+        if (prayerVerificationMethod === 'detection') {
+            setScreenIndex(26);
+        } else {
+            setScreenIndex(27);
         }
     };
 
@@ -902,7 +953,28 @@ function AppContent() {
 
                     // Auto-fetch real prayer times and sync schedules on startup
                     if (hasApps) {
-                        await fetchPrayerTimesByGPS();
+                        const savedMode = await AsyncStorage.getItem('@location_mode');
+                        const savedDisplay = await AsyncStorage.getItem('@location_display');
+
+                        if (savedMode === 'manual' && savedDisplay) {
+                            // Restore manual city location — no GPS prompt
+                            const savedCity = await AsyncStorage.getItem('@location_city');
+                            const savedCountry = await AsyncStorage.getItem('@location_country');
+                            const savedLat = await AsyncStorage.getItem('@location_latitude');
+                            const savedLng = await AsyncStorage.getItem('@location_longitude');
+                            setLocation(savedDisplay);
+                            setLocationMode('manual');
+                            if (savedLat && savedLng) {
+                                setSavedLatitude(parseFloat(savedLat));
+                                setSavedLongitude(parseFloat(savedLng));
+                            }
+                            if (savedCity && savedCountry) {
+                                await fetchPrayerTimesByCity(savedCity, savedCountry);
+                            }
+                        } else {
+                            // GPS mode or first launch — fetch via GPS
+                            await fetchPrayerTimesByGPS();
+                        }
                         console.log("Auto-fetched prayer times on startup");
 
                         // Re-sync multi-session reminder locks on startup
@@ -922,6 +994,15 @@ function AppContent() {
                         }
                     }
                 }
+
+                // Check if there's a pending prayer detection flag from a previous shield tap
+                try {
+                    const pending = await SalahLockModule.checkPendingPrayerDetection();
+                    if (pending) {
+                        await SalahLockModule.clearPendingPrayerDetection();
+                        setShowPrayerDetection(true);
+                    }
+                } catch (_) {}
             } catch (e) {
                 console.error("Startup check error:", e);
             }
@@ -1011,16 +1092,21 @@ function AppContent() {
         loadPrayerNotifPreference();
     }, []);
 
-    // Check if user has completed onboarding
+    // Check if user has completed onboarding AND has active subscription
     useEffect(() => {
         const checkOnboarding = async () => {
             const done = await AsyncStorage.getItem('onboarding_complete');
-            if (done === 'true') {
+            if (done === 'true' && isSubscribed) {
                 setIsAppReady(true);
+            } else if (done === 'true' && !isSubscribed) {
+                // Subscription expired/cancelled — reset onboarding
+                await AsyncStorage.removeItem('onboarding_complete');
+                setIsAppReady(false);
+                setScreenIndex(0);
             }
         };
         checkOnboarding();
-    }, []);
+    }, [isSubscribed]);
 
     // Schedule prayer notifications when prayer times change
     useEffect(() => {
@@ -1139,6 +1225,9 @@ function AppContent() {
                         setLocationMode('manual');
                         setLocation('');
                         setPrayerTimes(null);
+                        setSavedLatitude(null);
+                        setSavedLongitude(null);
+                        setShowOnboardingCitySearch(false);
                     }
                 }
             ]
@@ -1161,14 +1250,15 @@ function AppContent() {
     useEffect(() => {
         let isMounted = true;
         const initPrayerFetch = async () => {
-            if (screenIndex === 24) {
+            if (screenIndex === 25) {
                 // We are on the loading screen, start fetching
                 const success = await fetchPrayerTimesByGPS();
                 if (isMounted) {
                     if (success) {
                         next();
                     } else {
-                        // If failed, go back to previous screen so user can retry or see error
+                        // GPS failed — show city search fallback on screen 24
+                        setShowOnboardingCitySearch(true);
                         back();
                     }
                 }
@@ -1178,16 +1268,16 @@ function AppContent() {
         return () => { isMounted = false; };
     }, [screenIndex]);
 
-    // Screen 20: Auto-skip (legacy paywall — Superwall handles paywalls now)
+    // Auto-skip screen 4 (age range removed)
     useEffect(() => {
-        if (!isAppReady && screenIndex === 20) {
+        if (!isAppReady && screenIndex === 4) {
             setScreenIndex(prev => prev + 1);
         }
     }, [screenIndex, isAppReady]);
 
     // Onboarding screen funnel tracking
     const ONBOARDING_SCREEN_NAMES = [
-        'welcome', 'name', 'age', 'phone_usage', 'prayer_frequency',
+        'welcome', 'name', 'skip_age', 'phone_usage', 'prayer_frequency',
         'prayer_goal', 'prayer_days', 'challenges_1', 'challenges_2', 'challenges_3',
         'deeper_struggles_1', 'deeper_struggles_2', 'deeper_struggles_3', 'deeper_struggles_4', 'deeper_struggles_5',
         'commitment', 'transition', 'social_proof_1', 'social_proof_2', 'social_proof_3',
@@ -1207,12 +1297,53 @@ function AppContent() {
     // --- NAVIGATION ---
     const next = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        setScreenIndex(prev => prev + 1);
+        if (screenIndex === 20) {
+            // After Prayer Verification Options: skip detection screens if simple
+            if (prayerVerificationMethod === 'simple') {
+                setScreenIndex(23);
+            } else {
+                setScreenIndex(21);
+            }
+        } else if (screenIndex === 25) {
+            // After Loading screen: show camera permission only if detection selected
+            if (prayerVerificationMethod === 'detection') {
+                setScreenIndex(26);
+            } else {
+                setScreenIndex(27);
+            }
+        } else if (screenIndex === 30) {
+            // Skip Spiritual Sessions Setup (31) and Summary Cards (32) — go straight to Final Success
+            setScreenIndex(33);
+        } else {
+            setScreenIndex(prev => prev + 1);
+        }
     };
 
     const back = () => {
         if (screenIndex > 0) {
-            setScreenIndex(prev => prev - 1);
+            if (screenIndex === 23) {
+                // Going back from Permission Intro: skip detection screens if simple
+                if (prayerVerificationMethod === 'simple') {
+                    setScreenIndex(20);
+                } else {
+                    setScreenIndex(22);
+                }
+            } else if (screenIndex === 27) {
+                // Going back from Prayer Times: skip camera permission screen if simple
+                if (prayerVerificationMethod === 'detection') {
+                    setScreenIndex(26);
+                } else {
+                    setScreenIndex(25);
+                }
+            } else if (screenIndex === 33) {
+                // Going back from Final Success: skip over screens 31 and 32 (removed from flow)
+                setScreenIndex(30);
+            } else if (screenIndex === 5) {
+                // Skip over removed age range screen (4)
+                setScreenIndex(3);
+            } else {
+                setScreenIndex(prev => prev - 1);
+            }
         }
     };
 
@@ -1370,6 +1501,16 @@ function AppContent() {
                         <Text style={styles.dashTitleMain}>Deen Taqwa</Text>
                         <Text style={styles.dashSubtitle}>Digital wellness through mindful prayer</Text>
                         <Text style={styles.dashDateText}>{currentTime.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
+                        <TouchableOpacity
+                            onPress={() => { setCityQuery(''); setCitySuggestions([]); setIsChangingLocation(true); }}
+                            style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}
+                        >
+                            <Ionicons name="location-outline" size={14} color={COLORS.secondaryText} />
+                            <Text style={{ fontSize: 13, color: COLORS.secondaryText, marginLeft: 4, fontFamily: FONTS.medium }}>
+                                {location || 'Set location'}
+                            </Text>
+                            <Ionicons name="chevron-forward" size={12} color={COLORS.tertiaryText} style={{ marginLeft: 2 }} />
+                        </TouchableOpacity>
                     </View>
                 </View>
 
@@ -1397,9 +1538,9 @@ function AppContent() {
                 {/* Daily Reminder Locked Banner */}
                 {isCurrentlyLocked && isDailyReminderLock && !showSpiritualFlow && (
                     <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.lockedBanner}>
-                        <Text style={styles.lockedBannerText}>Apps are locked for spiritual reminder</Text>
+                        <Text style={styles.lockedBannerText}>Apps are locked for dhikr reminder</Text>
                         <TouchableOpacity style={styles.iHavePrayedButton} onPress={() => setShowSpiritualFlow(true)}>
-                            <Text style={styles.iHavePrayedButtonText}>Start Spiritual Journey</Text>
+                            <Text style={styles.iHavePrayedButtonText}>Start Dhikr Journey</Text>
                         </TouchableOpacity>
                     </Animated.View>
                 )}
@@ -1423,26 +1564,34 @@ function AppContent() {
                 {/* Next Prayer Card */}
                 {prayerTimes && renderNextPrayerCard()}
 
-                {/* Daily Spiritual Reminder Section */}
+                {/* Daily Dhikr Reminder Section */}
                 <View style={styles.reminderSection}>
                     <View style={styles.reminderHeader}>
                         <View style={styles.reminderTitleRow}>
                             <Ionicons name="notifications" size={20} color={COLORS.accent} />
-                            <Text style={styles.reminderTitle}>Daily Spiritual Reminder</Text>
+                            <Text style={styles.reminderTitle}>Daily Dhikr Reminder</Text>
                         </View>
                         <Text style={styles.reminderDescription}>
                             {reminderSessionCount > 1
                                 ? `${reminderSessionCount} sessions scheduled daily`
                                 : 'Get daily Quran verse, dua, and dhikr'}
                         </Text>
+                        <View style={{
+                            alignSelf: 'flex-start',
+                            backgroundColor: '#e8f5e9',
+                            borderRadius: 20,
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            marginTop: 6,
+                        }}>
+                            <Text style={{ color: '#2cb06a', fontWeight: '600', fontSize: 12 }}>
+                                Choose up to 10 sessions a day
+                            </Text>
+                        </View>
                     </View>
                     <TouchableOpacity
                         style={styles.reminderTimeButton}
                         onPress={() => {
-                            if (!isSubscribed) {
-                                showPaywall('feature_reminders', () => setShowReminderSettings(true));
-                                return;
-                            }
                             setShowReminderSettings(true);
                         }}
                     >
@@ -1460,10 +1609,6 @@ function AppContent() {
                         <TouchableOpacity
                             style={styles.viewReminderButton}
                             onPress={() => {
-                                if (!isSubscribed) {
-                                    showPaywall('feature_reminders', () => setShowDailyReminder(true));
-                                    return;
-                                }
                                 setShowDailyReminder(true);
                             }}
                         >
@@ -1914,7 +2059,7 @@ function AppContent() {
                     <TouchableOpacity onPress={() => setShowReminderSettings(false)}>
                         <Ionicons name="arrow-back" size={24} color={COLORS.black} />
                     </TouchableOpacity>
-                    <Text style={{ fontSize: 18, fontWeight: '600', color: COLORS.black }}>Daily Spiritual Reminder</Text>
+                    <Text style={{ fontSize: 18, fontWeight: '600', color: COLORS.black }}>Daily Dhikr Reminder</Text>
                     <TouchableOpacity onPress={saveAndSchedule}>
                         <Text style={{ fontSize: 16, fontWeight: '600', color: COLORS.accent }}>Save</Text>
                     </TouchableOpacity>
@@ -2015,7 +2160,6 @@ function AppContent() {
                     <Text style={styles.settingsSectionTitle}>APP BLOCKING</Text>
                     <Card style={styles.settingsSectionCard}>
                         <TouchableOpacity style={styles.settingsItemDetailed} onPress={() => {
-                            if (!isSubscribed) { showPaywall('feature_screenlock', handleSelectApps); return; }
                             handleSelectApps();
                         }}>
                             <View style={styles.settingsItemLeftDetailed}>
@@ -2128,7 +2272,7 @@ function AppContent() {
                                         size={20} color={COLORS.black}
                                     />
                                 </View>
-                                <View>
+                                <View style={{ flex: 1 }}>
                                     <Text style={styles.settingsItemNameDetailed}>Prayer Detection</Text>
                                     <Text style={styles.settingsLocationSubtitle}>Camera verifies through photos of sink and place where you're going to pray</Text>
                                 </View>
@@ -2137,36 +2281,6 @@ function AppContent() {
                     </Card>
                 </View>
 
-                {/* Developer Tools */}
-                <View style={styles.settingsSection}>
-                    <Text style={styles.settingsSectionTitle}>DEVELOPER TOOLS</Text>
-                    <Card style={styles.settingsSectionCard}>
-                        <TouchableOpacity
-                            style={styles.settingsItemDetailed}
-                            onPress={async () => {
-                                try {
-                                    await SalahLockModule.clearLockType();
-                                    await SalahLockModule.testBlockApps();
-                                    setIsCurrentlyLocked(true);
-                                    setIsDailyReminderLock(false);
-                                } catch (e) {
-                                    console.error('Test lock error:', e);
-                                }
-                            }}
-                        >
-                            <View style={styles.settingsItemLeftDetailed}>
-                                <View style={styles.settingsIconContainer}>
-                                    <Ionicons name="bug-outline" size={20} color={COLORS.black} />
-                                </View>
-                                <View>
-                                    <Text style={styles.settingsItemNameDetailed}>Test Prayer Lock (Dev)</Text>
-                                    <Text style={styles.settingsLocationSubtitle}>Triggers a fake prayer lock for testing</Text>
-                                </View>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color={COLORS.tertiaryText} />
-                        </TouchableOpacity>
-                    </Card>
-                </View>
 
                 {/* Premium */}
                 <View style={styles.settingsSection}>
@@ -2256,6 +2370,22 @@ function AppContent() {
                 <TouchableOpacity style={styles.resetButton} onPress={handleResetApp}>
                     <Text style={styles.resetButtonText}>Reset App</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.testLockButton, { marginTop: 10, marginBottom: 20 }]}
+                    onPress={async () => {
+                        try {
+                            await SalahLockModule.clearLockType();
+                            await SalahLockModule.testBlockApps();
+                            setIsCurrentlyLocked(true);
+                            setIsDailyReminderLock(false);
+                        } catch (e) {
+                            console.error('Test lock error:', e);
+                        }
+                    }}
+                >
+                    <Ionicons name="bug-outline" size={16} color={COLORS.tertiaryText} />
+                    <Text style={[styles.testLockButtonText, { color: COLORS.tertiaryText }]}>Test Lock (Dev)</Text>
+                </TouchableOpacity>
             </Animated.View>
         );
     }
@@ -2277,13 +2407,6 @@ function AppContent() {
                         key={tab}
                         style={styles.tabItem}
                         onPress={() => {
-                            if (tab === 'Progress' && !isSubscribed) {
-                                showPaywall('feature_progress', () => {
-                                    setActiveTab('Progress');
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                });
-                                return;
-                            }
                             posthog?.capture('tab_changed', { tab });
                             setActiveTab(tab);
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -2339,14 +2462,14 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={1} total={29} onBack={back} />
+                    <Header current={1} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn.delay(200)}>
                             <Text style={styles.quoteTitle}>
                                 In a world of endless distractions...
                             </Text>
                             <Text style={styles.quoteBody}>
-                                ...create space for what truly matters.
+                                ...create space for prayer, Quran, dhikr, and what truly matters.
                             </Text>
                         </Animated.View>
                         <View style={styles.spacer} />
@@ -2362,7 +2485,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={2} total={29} onBack={back} />
+                    <Header current={2} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn} style={styles.illustrationPlaceholder}>
                             <Ionicons name="notifications-outline" size={80} color={COLORS.black} />
@@ -2386,7 +2509,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={3} total={29} onBack={back} />
+                    <Header current={3} total={34} onBack={back} />
                     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
                         <Text style={styles.introSmall}>first things first</Text>
                         <Text style={styles.heading}>what should we call you?</Text>
@@ -2410,41 +2533,9 @@ function AppContent() {
         );
     }
 
-    // Screen 5: Age Range
+    // Screen 5: Age Range (removed — auto-skipped)
     if (!isAppReady && screenIndex === 4) {
-        const options = ['14-24', '25-34', '35-44', '45-54', '55+'];
-        return (
-            <ScreenTransition>
-                <SafeAreaView style={styles.safeContainer}>
-                    <Header current={4} total={29} onBack={back} />
-                    <View style={styles.content}>
-                        <Text style={styles.heading}>and how old are you?</Text>
-                        <View style={styles.optionsContainer}>
-                            {options.map(opt => (
-                                <TouchableOpacity
-                                    key={opt}
-                                    onPress={() => {
-                                        updateData('ageRange', opt);
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    }}
-                                    style={[
-                                        styles.optionButton,
-                                        userData.ageRange === opt && styles.optionButtonSelected
-                                    ]}
-                                >
-                                    <Text style={[
-                                        styles.optionText,
-                                        userData.ageRange === opt && styles.optionTextSelected
-                                    ]}>{opt}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                        <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} disabled={!userData.ageRange} />
-                    </View>
-                </SafeAreaView>
-            </ScreenTransition>
-        );
+        return null;
     }
 
     // Screen 6: Phone Usage
@@ -2453,7 +2544,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={5} total={29} onBack={back} />
+                    <Header current={5} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how much time do you spend on your phone daily?</Text>
                         <View style={styles.optionsContainer}>
@@ -2493,7 +2584,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={6} total={29} onBack={back} />
+                    <Header current={6} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn.delay(300)}>
                             <Text style={styles.impactText}>
@@ -2524,7 +2615,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={7} total={29} onBack={back} />
+                    <Header current={7} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how many times do you pray per day?</Text>
                         <View style={styles.frequencyGrid}>
@@ -2550,6 +2641,9 @@ function AppContent() {
                         <Text style={styles.supportiveText}>
                             {userData.prayerFrequency !== null ? `Current: ${userData.prayerFrequency} prayers daily` : 'Select your current prayer count'}
                         </Text>
+                        <Text style={styles.supportiveText}>
+                            We'll also help you build habits around Quran reading, daily duas, and dhikr
+                        </Text>
                         <View style={styles.spacer} />
                         <PremiumButton title="Continue" onPress={next} disabled={userData.prayerFrequency === null} />
                     </View>
@@ -2565,10 +2659,10 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={8} total={29} onBack={back} />
+                    <Header current={8} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how many times per day do you want to pray?</Text>
-                        <Text style={styles.subheading}>Set a realistic goal for yourself</Text>
+                        <Text style={styles.subheading}>Plus daily Quran, dhikr, and duas to strengthen your connection with Allah</Text>
 
                         <View style={styles.frequencyGrid}>
                             {options.map(num => (
@@ -2609,9 +2703,10 @@ function AppContent() {
         return (
             <ScreenTransition direction={screenIndex > 8 ? 'forward' : 'back'}>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={9} total={29} onBack={back} />
+                    <Header current={9} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>how would you describe your relationship with Allah right now?</Text>
+                        <Text style={styles.subheading}>Through prayer, Quran, dhikr, and remembrance</Text>
                         <View style={styles.optionsContainer}>
                             {options.map(opt => (
                                 <TouchableOpacity
@@ -2643,7 +2738,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={10} total={29} onBack={back} />
+                    <Header current={10} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>what do you want to achieve?</Text>
                         <Text style={styles.subheading}>choose up to 3</Text>
@@ -2675,7 +2770,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={11} total={29} onBack={back} />
+                    <Header current={11} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>what's the biggest obstacle to consistent prayer?</Text>
                         <ScrollView>
@@ -2709,7 +2804,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={12} total={29} onBack={back} />
+                    <Header current={12} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>sometimes, deeper struggles affect our prayer life</Text>
                         <Text style={styles.subheading}>do any of these resonate?</Text>
@@ -2754,11 +2849,11 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={13} total={29} onBack={back} />
+                    <Header current={13} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>a different approach</Text>
                         <Text style={styles.approachTitle}>Deen Taqwa doesn't just remind you to pray.</Text>
-                        <Text style={styles.approachTitle}>It creates sacred space by gently removing distractions.</Text>
+                        <Text style={styles.approachTitle}>It creates sacred space for prayer, Quran, dhikr, and duas by gently removing distractions.</Text>
                         <View style={styles.spacer} />
                         <PremiumButton title="Tell me more" onPress={next} />
                     </View>
@@ -2772,7 +2867,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={14} total={29} onBack={back} />
+                    <Header current={14} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>thanks for sharing</Text>
                         <Text style={styles.heading}>here's what we heard</Text>
@@ -2780,7 +2875,7 @@ function AppContent() {
                         <View style={{ marginTop: 30, gap: 16 }}>
                             <View style={styles.summaryCard}>
                                 <Text style={styles.summaryLabel}>where you want to be</Text>
-                                <Text style={styles.summaryContent}>🕌 Praying all 5 salah with consistency</Text>
+                                <Text style={styles.summaryContent}>🕌 Consistent in prayer, Quran, dhikr, and duas</Text>
                             </View>
 
                             <View style={styles.summaryCard}>
@@ -2795,7 +2890,7 @@ function AppContent() {
                         </View>
 
                         <Text style={[styles.subheading, { marginTop: 24 }]}>
-                            We see you. Together, we'll build a plan that helps you grow closer to Allah, one prayer at a time.
+                            We see you. Together, we'll build a plan that helps you grow closer to Allah through prayer, Quran, dhikr, and daily remembrance.
                         </Text>
 
                         <View style={styles.spacer} />
@@ -2816,10 +2911,10 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={16} total={29} onBack={back} />
+                    <Header current={16} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>do you believe small daily habits can lead to big rewards?</Text>
-                        <Text style={styles.subheading}>saying a few words of dhikr each day takes seconds but builds a lasting connection with Allah</Text>
+                        <Text style={styles.subheading}>A minute of Quran, a few words of dhikr, or a short dua each day takes seconds but builds a lasting connection with Allah</Text>
 
                         <Text style={[styles.bodyText, { marginTop: 24, fontStyle: 'italic' }]}>
                             The Prophet ﷺ said: "The most beloved deeds to Allah are those done consistently, even if they are small."
@@ -2851,65 +2946,67 @@ function AppContent() {
         );
     }
 
-    // Screen 17: Daily Spiritual Reminders (Bonus Feature)
+    // Screen 17: Spiritual Sessions Introduction
     if (!isAppReady && screenIndex === 17) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={17} total={29} onBack={back} />
-                    <View style={styles.content}>
+                    <Header current={18} total={34} onBack={back} />
+                    <ScrollView style={[styles.content, { paddingTop: 10 }]} showsVerticalScrollIndicator={false}>
                         <Text style={styles.bonusTag}>bonus included</Text>
-                        <Text style={styles.heading}>daily spiritual reminders</Text>
-                        <Text style={[styles.subheading, { marginTop: 8 }]}>
-                            earn extra good deeds in just 30 seconds a day
+                        <Text style={[styles.heading, { fontSize: 24, marginTop: 4 }]}>daily Quran, dhikr, and duas to grow your deen</Text>
+                        <Text style={[styles.subheading, { marginTop: 4, fontSize: 14 }]}>
+                            Schedule 1-10 daily sessions. Each locks your apps until you read a Quran verse, recite a dua, complete dhikr, and tap 'I'm Done'.
                         </Text>
 
-                        <Text style={[styles.bodyText, { marginTop: 24, marginBottom: 16 }]}>
-                            Each day, you'll receive:
-                        </Text>
-
-                        {/* Card 1: Daily Quran Verse */}
-                        <View style={styles.reminderCard}>
-                            <Text style={styles.reminderEmoji}>📖</Text>
-                            <View style={styles.reminderTextContainer}>
-                                <Text style={styles.reminderTitle}>Daily Quran Verse</Text>
-                                <Text style={styles.reminderDesc}>
-                                    A beautiful ayah with Arabic and English meaning
-                                </Text>
-                            </View>
+                        <View style={{
+                            alignSelf: 'flex-start',
+                            backgroundColor: '#e8f5e9',
+                            borderRadius: 20,
+                            paddingHorizontal: 14,
+                            paddingVertical: 5,
+                            marginTop: 8,
+                            marginBottom: 2,
+                        }}>
+                            <Text style={{ color: '#2cb06a', fontWeight: '700', fontSize: 13 }}>
+                                Choose up to 10 sessions a day
+                            </Text>
                         </View>
 
-                        {/* Card 2: Daily Dua */}
-                        <View style={styles.reminderCard}>
-                            <Text style={styles.reminderEmoji}>🤲</Text>
-                            <View style={styles.reminderTextContainer}>
-                                <Text style={styles.reminderTitle}>Daily Dua</Text>
-                                <Text style={styles.reminderDesc}>
-                                    A powerful supplication for your day
-                                </Text>
+                        <View style={{ marginTop: 8 }}>
+                            <View style={[styles.reminderCard, { paddingVertical: 10 }]}>
+                                <Text style={styles.reminderEmoji}>📖</Text>
+                                <View style={styles.reminderTextContainer}>
+                                    <Text style={styles.reminderTitle}>Unique Quran Verse</Text>
+                                    <Text style={[styles.reminderDesc, { fontSize: 13 }]}>
+                                        A different ayah from 30 curated verses each session.
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={[styles.reminderCard, { paddingVertical: 10 }]}>
+                                <Text style={styles.reminderEmoji}>🤲</Text>
+                                <View style={styles.reminderTextContainer}>
+                                    <Text style={styles.reminderTitle}>Unique Dua</Text>
+                                    <Text style={[styles.reminderDesc, { fontSize: 13 }]}>
+                                        A different dua from 67 supplications across 6 categories.
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={[styles.reminderCard, { paddingVertical: 10 }]}>
+                                <Text style={styles.reminderEmoji}>📿</Text>
+                                <View style={styles.reminderTextContainer}>
+                                    <Text style={styles.reminderTitle}>Guided Dhikr</Text>
+                                    <Text style={[styles.reminderDesc, { fontSize: 13 }]}>
+                                        SubhanAllah, Alhamdulillah, Allahu Akbar — complete your remembrance.
+                                    </Text>
+                                </View>
                             </View>
                         </View>
-
-                        {/* Card 3: Daily Dhikr */}
-                        <View style={styles.reminderCard}>
-                            <Text style={styles.reminderEmoji}>📿</Text>
-                            <View style={styles.reminderTextContainer}>
-                                <Text style={styles.reminderTitle}>Daily Dhikr</Text>
-                                <Text style={styles.reminderDesc}>
-                                    SubhanAllah, Alhamdulillah, Allahu Akbar - 10 times each
-                                </Text>
-                            </View>
-                        </View>
-
-                        <Text style={[styles.bodyText, { marginTop: 20 }]}>
-                            Your phone locks once a day until you complete your remembrance — making it easy to stay consistent.
-                        </Text>
-
-                        <Text style={[styles.finePrint, { marginTop: 16 }]}>
-                            Takes less than 30 seconds. Rewards that last forever.
-                        </Text>
-
-                        <View style={styles.spacer} />
+                        <View style={{ height: 10 }} />
+                    </ScrollView>
+                    <View style={{ paddingHorizontal: 30, paddingBottom: 20 }}>
                         <PremiumButton title="Continue" onPress={next} />
                     </View>
                 </SafeAreaView>
@@ -2922,7 +3019,7 @@ function AppContent() {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={18} total={29} onBack={back} />
+                    <Header current={19} total={34} onBack={back} />
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                         <Text style={styles.introSmall}>one last thing</Text>
                         <Text style={styles.heading}>how committed are you to building your prayer habit?</Text>
@@ -2958,18 +3055,15 @@ function AppContent() {
         );
     }
 
-    // Screen 19: Daily Habits Bonus Feature
+    // Screen 19: How It Works (two ways)
     if (!isAppReady && screenIndex === 19) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={19} total={29} onBack={back} />
+                    <Header current={20} total={34} onBack={back} />
                     <View style={styles.content}>
-                        <Text style={styles.introSmall}>here's how deen taqwa works</Text>
-                        <Text style={styles.heading}>we can help you build habits that bring you closer to Allah</Text>
-                        <Text style={[styles.bodyText, { marginTop: 16 }]}>
-                            Deen Taqwa locks your apps at prayer time so the app can help you try to not miss a prayer, and once a day for a quick moment of dhikr, dua, and Quran.
-                        </Text>
+                        <Text style={styles.introSmall}>here's how deen taqwa helps</Text>
+                        <Text style={styles.heading}>two ways to build blessed habits</Text>
 
                         <View style={{ marginTop: 20 }}>
                             <View style={styles.reminderCard}>
@@ -2977,7 +3071,7 @@ function AppContent() {
                                 <View style={styles.reminderTextContainer}>
                                     <Text style={styles.reminderTitle}>Prayer Lock</Text>
                                     <Text style={styles.reminderDesc}>
-                                        Your apps lock at each prayer time. Unlock by confirming you've prayed. Never miss a salah again.
+                                        Apps lock 5 times daily at each salah. A moment for prayer and reflection.
                                     </Text>
                                 </View>
                             </View>
@@ -2985,9 +3079,9 @@ function AppContent() {
                             <View style={styles.reminderCard}>
                                 <Text style={styles.reminderEmoji}>📿</Text>
                                 <View style={styles.reminderTextContainer}>
-                                    <Text style={styles.reminderTitle}>Daily Dhikr Lock</Text>
+                                    <Text style={styles.reminderTitle}>Spiritual Sessions</Text>
                                     <Text style={styles.reminderDesc}>
-                                        Once a day at your chosen time, your phone locks until you read Quran, make dua, and say your dhikr. Takes less than 2 minutes.
+                                        Schedule 1-10 daily sessions for Quran verses, duas, and dhikr. Apps lock until you complete each spiritual moment and tap 'I'm Done'.
                                     </Text>
                                 </View>
                             </View>
@@ -3005,54 +3099,167 @@ function AppContent() {
         );
     }
 
-    // Screen 20: Auto-skip (legacy paywall — Superwall handles paywalls now)
+    // Screen 20: Prayer Verification Options
     if (!isAppReady && screenIndex === 20) {
-        return null;
-    }
-
-    // Screen 21: How It Works
-    if (!isAppReady && screenIndex === 21) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={21} total={29} onBack={back} />
-                    <View style={styles.content}>
-                        <Text style={styles.heading}>how it works</Text>
-                        <View style={styles.stepCard}>
-                            <Text style={styles.stepNum}>1</Text>
-                            <View>
-                                <Text style={styles.stepTitle}>Set your prayer times</Text>
-                                <Text style={styles.stepDesc}>Automatic by location</Text>
-                            </View>
+                    <Header current={21} total={34} onBack={back} />
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                        <Text style={styles.introSmall}>choose your unlock method</Text>
+                        <Text style={styles.heading}>how do you want to verify your prayer?</Text>
+                        <Text style={[styles.subheading, { marginTop: 8 }]}>You can change this anytime in settings</Text>
+
+                        <View style={{ marginTop: 24 }}>
+                            <TouchableOpacity
+                                style={[styles.optionButton, prayerVerificationMethod === 'simple' && styles.optionButtonSelected, { marginBottom: 12 }]}
+                                onPress={() => {
+                                    setPrayerVerificationMethod('simple');
+                                    SalahLockModule.setPrayerVerificationMethod('simple').catch(() => {});
+                                }}
+                            >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                    <Text style={[styles.optionText, prayerVerificationMethod === 'simple' && styles.optionTextSelected]}>Simple Confirmation</Text>
+                                    <View style={{ backgroundColor: prayerVerificationMethod === 'simple' ? '#fff' : '#eee', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#555' }}>DEFAULT</Text>
+                                    </View>
+                                </View>
+                                <Text style={{ fontSize: 14, color: prayerVerificationMethod === 'simple' ? 'rgba(255,255,255,0.85)' : '#888', marginTop: 2 }}>
+                                    Tap "I have prayed" to unlock your apps. Quick and easy.
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.optionButton, prayerVerificationMethod === 'detection' && styles.optionButtonSelected, { marginBottom: 12 }]}
+                                onPress={() => {
+                                    setPrayerVerificationMethod('detection');
+                                    SalahLockModule.setPrayerVerificationMethod('detection').catch(() => {});
+                                }}
+                            >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                    <Text style={[styles.optionText, prayerVerificationMethod === 'detection' && styles.optionTextSelected]}>Prayer Detection</Text>
+                                    <View style={{ backgroundColor: prayerVerificationMethod === 'detection' ? '#fff' : '#eee', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#555' }}>ADVANCED</Text>
+                                    </View>
+                                </View>
+                                <Text style={{ fontSize: 14, color: prayerVerificationMethod === 'detection' ? 'rgba(255,255,255,0.85)' : '#888', marginTop: 2 }}>
+                                    Verify with photos of your wudu sink and prayer spot. Builds accountability.
+                                </Text>
+                            </TouchableOpacity>
                         </View>
-                        <View style={styles.stepCard}>
-                            <Text style={styles.stepNum}>2</Text>
-                            <View>
-                                <Text style={styles.stepTitle}>Choose apps to pause</Text>
-                                <Text style={styles.stepDesc}>Selected apps focus lock</Text>
-                            </View>
-                        </View>
-                        <View style={styles.stepCard}>
-                            <Text style={styles.stepNum}>3</Text>
-                            <View>
-                                <Text style={styles.stepTitle}>Pray with full presence</Text>
-                                <Text style={styles.stepDesc}>Connect without noise</Text>
-                            </View>
-                        </View>
-                        <View style={styles.spacer} />
-                        <PremiumButton title="Continue" onPress={next} />
-                    </View>
+
+                        <Text style={[styles.finePrint, { marginTop: 12 }]}>
+                            Prayer Detection uses Apple's Vision AI. All photos are processed on your device and never stored or shared.
+                        </Text>
+
+                        <PremiumButton title="Continue" onPress={next} style={{ marginTop: 24, marginBottom: 40 }} />
+                    </ScrollView>
                 </SafeAreaView>
             </ScreenTransition>
         );
     }
 
-    // Screen 22: Permission Intro
+    // Screen 21: Prayer Detection Preview (conditional — shown only if detection selected)
+    if (!isAppReady && screenIndex === 21) {
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={22} total={34} onBack={back} />
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                        <Text style={styles.introSmall}>how prayer detection works</Text>
+                        <Text style={styles.heading}>verify your prayer in 2 simple steps</Text>
+
+                        <View style={{ marginTop: 20 }}>
+                            <View style={[styles.reminderCard, { alignItems: 'flex-start' }]}>
+                                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>1</Text>
+                                </View>
+                                <View style={styles.reminderTextContainer}>
+                                    <Text style={styles.reminderTitle}>🚿 Photo of Your Sink</Text>
+                                    <Text style={styles.reminderDesc}>
+                                        Take a photo of the sink where you made wudu. This confirms you're prepared for prayer.
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={[styles.reminderCard, { alignItems: 'flex-start' }]}>
+                                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>2</Text>
+                                </View>
+                                <View style={styles.reminderTextContainer}>
+                                    <Text style={styles.reminderTitle}>🧎 Photo of Your Prayer Spot</Text>
+                                    <Text style={styles.reminderDesc}>
+                                        Take a photo of your prayer mat or prayer area. This confirms you're ready to pray.
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={[styles.reminderCard, { backgroundColor: '#f0faf4' }]}>
+                                <Text style={styles.reminderEmoji}>✅</Text>
+                                <View style={styles.reminderTextContainer}>
+                                    <Text style={[styles.reminderTitle, { color: '#1a7a45' }]}>Both photos verified</Text>
+                                    <Text style={[styles.reminderDesc, { color: '#2a9a5a' }]}>
+                                        "MashAllah! You're ready to pray" — your apps unlock automatically.
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        <Text style={[styles.finePrint, { marginTop: 12 }]}>
+                            🔒 All photos are processed on your device using Apple Vision. Nothing is saved or uploaded.
+                        </Text>
+
+                        <PremiumButton title="Got It" onPress={next} style={{ marginTop: 24, marginBottom: 40 }} />
+                    </ScrollView>
+                </SafeAreaView>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 22: Prayer Detection Flow (conditional — shown only if detection selected)
     if (!isAppReady && screenIndex === 22) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={22} total={29} onBack={back} />
+                    <Header current={23} total={34} onBack={back} />
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                        <Text style={styles.introSmall}>here's what happens at prayer time</Text>
+                        <Text style={styles.heading}>the prayer detection flow</Text>
+
+                        <View style={{ marginTop: 20 }}>
+                            {[
+                                { icon: '⏰', text: 'Prayer time arrives' },
+                                { icon: '🔒', text: 'Your selected apps lock' },
+                                { icon: '👆', text: 'Tap "I\'m Ready to Pray" on the shield screen' },
+                                { icon: '🔔', text: 'Notification appears — "Open Deen Taqwa to verify..."' },
+                                { icon: '📷', text: 'Take photo of your sink → AI verifies ✓' },
+                                { icon: '📷', text: 'Take photo of your prayer spot → AI verifies ✓' },
+                                { icon: '✅', text: '"MashAllah! You\'re ready to pray!" → apps unlock' },
+                            ].map((step, i) => (
+                                <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
+                                    <Text style={{ fontSize: 22, marginRight: 14, marginTop: 1 }}>{step.icon}</Text>
+                                    <Text style={{ flex: 1, fontSize: 15, color: '#333', lineHeight: 22 }}>{step.text}</Text>
+                                </View>
+                            ))}
+                        </View>
+
+                        <Text style={[styles.subheading, { marginTop: 8, textAlign: 'center' }]}>
+                            The whole process takes less than 30 seconds.
+                        </Text>
+
+                        <PremiumButton title="I Understand" onPress={next} style={{ marginTop: 24, marginBottom: 40 }} />
+                    </ScrollView>
+                </SafeAreaView>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 23: Permission Intro
+    if (!isAppReady && screenIndex === 23) {
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={24} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.heading}>to get started, we need two things</Text>
                         <View style={styles.permissionCard}>
@@ -3080,17 +3287,79 @@ function AppContent() {
         );
     }
 
-    // Screen 23: Location Request
-    if (!isAppReady && screenIndex === 23) {
+    // Screen 24: Location Request
+    if (!isAppReady && screenIndex === 24) {
+        if (showOnboardingCitySearch) {
+            return (
+                <ScreenTransition>
+                    <SafeAreaView style={styles.safeContainer}>
+                        <Header current={25} total={34} onBack={() => {
+                            setShowOnboardingCitySearch(false);
+                            setPrayerError(null);
+                            setCityQuery('');
+                            setCitySuggestions([]);
+                        }} />
+                        <View style={[styles.content, { paddingTop: 20 }]}>
+                            <Text style={styles.heading}>Search Your City</Text>
+                            <Text style={styles.subheading}>
+                                Enter your city name to calculate prayer times
+                            </Text>
+                            <View style={[styles.searchInputWrapperLarge, { marginTop: 24 }]}>
+                                <Ionicons name="search" size={20} color={COLORS.tertiaryText} style={styles.searchIconLarge} />
+                                <TextInput
+                                    style={styles.citySearchInputLarge}
+                                    placeholder="Search for a city..."
+                                    value={cityQuery}
+                                    onChangeText={fetchCitySuggestions}
+                                    placeholderTextColor={COLORS.tertiaryText}
+                                    autoFocus
+                                />
+                            </View>
+                            {cityQuery.length < 2 ? (
+                                <View style={[styles.emptySearchContainer, { marginTop: 40 }]}>
+                                    <Ionicons name="search-outline" size={60} color={COLORS.divider} />
+                                    <Text style={styles.emptySearchText}>Search for any city in the world</Text>
+                                </View>
+                            ) : (
+                                <ScrollView style={{ maxHeight: 300, marginTop: 8 }}>
+                                    {citySuggestions.map((item, index) => (
+                                        <TouchableOpacity
+                                            key={index}
+                                            style={styles.suggestionItemLarge}
+                                            onPress={() => selectCityOnboarding(item)}
+                                        >
+                                            <Ionicons name="location-outline" size={20} color={COLORS.secondaryText} />
+                                            <Text style={styles.suggestionTextLarge}>{item.displayName}</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={COLORS.tertiaryText} />
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            )}
+                            <View style={styles.spacer} />
+                            <TouchableOpacity onPress={() => {
+                                setShowOnboardingCitySearch(false);
+                                setPrayerError(null);
+                                setCityQuery('');
+                                setCitySuggestions([]);
+                            }} style={{ marginTop: 16, paddingVertical: 12 }}>
+                                <Text style={{ color: COLORS.secondaryText, textAlign: 'center', fontFamily: FONTS.medium, fontSize: 15 }}>
+                                    Try GPS Instead
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </SafeAreaView>
+                </ScreenTransition>
+            );
+        }
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={23} total={29} onBack={back} />
+                    <Header current={25} total={34} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="location" size={100} color={COLORS.black} />
                         </View>
-                        <Text style={styles.heading}>Enable Location</Text>
+                        <Text style={styles.heading}>Location Access</Text>
                         <Text style={styles.subheading}>
                             We'll use your location to calculate the precise prayer times for your area
                         </Text>
@@ -3100,7 +3369,7 @@ function AppContent() {
                                 {prayerError}
                             </Text>
                         )}
-                        <PremiumButton title="Enable Location" onPress={next} />
+                        <PremiumButton title="Continue" onPress={next} />
                         <Text style={styles.privacyNoteSmall}>You can change this in Settings anytime</Text>
                     </View>
                 </SafeAreaView>
@@ -3108,12 +3377,12 @@ function AppContent() {
         );
     }
 
-    // Screen 24: Loading
-    if (!isAppReady && screenIndex === 24) {
+    // Screen 25: Loading
+    if (!isAppReady && screenIndex === 25) {
         return (
             <ScreenTransition>
                 <View style={styles.container}>
-                    <Header current={24} total={29} hideProgress />
+                    <Header current={26} total={34} hideProgress />
                     <ActivityIndicator size="large" color={COLORS.black} />
                     <Text style={styles.loadingText}>Calculating your prayer times...</Text>
                 </View>
@@ -3121,12 +3390,55 @@ function AppContent() {
         );
     }
 
-    // Screen 25: Prayer Times
-    if (!isAppReady && screenIndex === 25) {
+    // Screen 26: Camera Permission (conditional — shown only if detection selected)
+    if (!isAppReady && screenIndex === 26) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={25} total={29} onBack={back} />
+                    <Header current={27} total={34} onBack={back} />
+                    <View style={styles.content}>
+                        <Text style={styles.introSmall}>one more permission</Text>
+                        <Text style={styles.heading}>Camera Access</Text>
+                        <View style={styles.centerIllustration}>
+                            <Ionicons name="camera" size={100} color={COLORS.black} />
+                        </View>
+                        <Text style={styles.subheading}>
+                            Your camera is used to verify your wudu sink and prayer spot when unlocking during prayer time.
+                        </Text>
+                        <Text style={[styles.finePrint, { marginTop: 12, textAlign: 'center' }]}>
+                            Photos are processed instantly on your device using Apple Vision AI. Nothing is saved, stored, or uploaded anywhere.
+                        </Text>
+                        <View style={styles.spacer} />
+                        <PremiumButton
+                            title="Continue"
+                            onPress={async () => {
+                                const result = await requestCameraPermission();
+                                if (!result.granted) {
+                                    setPrayerVerificationMethod('simple');
+                                    SalahLockModule.setPrayerVerificationMethod('simple').catch(() => {});
+                                }
+                                next();
+                            }}
+                        />
+                        <TouchableOpacity onPress={() => {
+                            setPrayerVerificationMethod('simple');
+                            SalahLockModule.setPrayerVerificationMethod('simple').catch(() => {});
+                            next();
+                        }} style={{ marginTop: 20 }}>
+                            <Text style={styles.skipText}>Skip for now</Text>
+                        </TouchableOpacity>
+                    </View>
+                </SafeAreaView>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 27: Prayer Times
+    if (!isAppReady && screenIndex === 27) {
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={28} total={34} onBack={back} />
                     <View style={styles.content}>
                         <Text style={styles.introSmall}>🕌 North Haven, CT</Text>
                         <Text style={styles.heading}>Your Prayer Times</Text>
@@ -3152,23 +3464,23 @@ function AppContent() {
         );
     }
 
-    // Screen 26: Screen Time Permission
-    if (!isAppReady && screenIndex === 26) {
+    // Screen 28: Screen Time Permission
+    if (!isAppReady && screenIndex === 28) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={26} total={29} onBack={back} />
+                    <Header current={29} total={34} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="shield-checkmark" size={100} color={COLORS.black} />
                         </View>
-                        <Text style={styles.heading}>Enable Screen Time</Text>
+                        <Text style={styles.heading}>Screen Time Access</Text>
                         <Text style={styles.subheading}>
                             This is required for Deen Taqwa to pause distracting apps during your prayer times.
                         </Text>
                         <View style={styles.spacer} />
                         <PremiumButton
-                            title={hasScreenTimePermission ? "Permission Granted" : "Allow Screen Time"}
+                            title={hasScreenTimePermission ? "Permission Granted" : "Continue"}
                             onPress={async () => {
                                 if (hasScreenTimePermission) {
                                     next();
@@ -3188,12 +3500,12 @@ function AppContent() {
         );
     }
 
-    // Screen 27: App Selection
-    if (!isAppReady && screenIndex === 27) {
+    // Screen 29: App Selection
+    if (!isAppReady && screenIndex === 29) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={27} total={29} onBack={back} />
+                    <Header current={30} total={34} onBack={back} />
                     <View style={styles.content}>
                         <View style={styles.centerIllustration}>
                             <Ionicons name="apps" size={100} color={COLORS.black} />
@@ -3239,12 +3551,12 @@ function AppContent() {
         );
     }
 
-    // Screen 28: How Prayer Lock Works (Instruction Screen)
-    if (!isAppReady && screenIndex === 28) {
+    // Screen 30: How Prayer Lock Works (Instruction Screen)
+    if (!isAppReady && screenIndex === 30) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
-                    <Header current={28} total={29} onBack={back} />
+                    <Header current={31} total={34} onBack={back} />
                     <ScrollView style={[styles.content, { paddingTop: 20 }]} showsVerticalScrollIndicator={false}>
                         <Text style={styles.heading}>How Deen Taqwa Works</Text>
                         <Text style={styles.subheading}>
@@ -3259,7 +3571,7 @@ function AppContent() {
                                 <View style={styles.instructionTextContainer}>
                                     <Text style={styles.instructionTitle}>Prayer Lock</Text>
                                     <Text style={styles.instructionDescription}>
-                                        Apps lock automatically at each of the 5 prayer times until you confirm you've prayed.
+                                        Apps lock automatically at each of the 5 prayer times - a sacred pause for salah and reflection.
                                     </Text>
                                 </View>
                             </Card>
@@ -3271,7 +3583,7 @@ function AppContent() {
                                 <View style={styles.instructionTextContainer}>
                                     <Text style={styles.instructionTitle}>Daily Remembrance Lock</Text>
                                     <Text style={styles.instructionDescription}>
-                                        Apps lock once daily at your chosen time until you read Quran, make dua, and complete dhikr.
+                                        Schedule up to 10 daily sessions for Quran reading, duas, and dhikr. Apps lock until you complete each spiritual practice.
                                     </Text>
                                 </View>
                             </Card>
@@ -3314,34 +3626,222 @@ function AppContent() {
         );
     }
 
-    // Screen 29: Final Success
-    if (!isAppReady && screenIndex === 29) {
+    // Screen 31: Spiritual Sessions Setup
+    if (!isAppReady && screenIndex === 31) {
+        const sessionSlots31 = Array.from({ length: reminderSessionCount }, (_, i) =>
+            reminderSessionTimes[i] || { hour: 8, minute: 0 }
+        );
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={32} total={34} onBack={back} />
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                        <Text style={styles.introSmall}>set up your spiritual sessions</Text>
+                        <Text style={styles.heading}>how many sessions do you want daily?</Text>
+                        <Text style={[styles.subheading, { marginTop: 8 }]}>
+                            Each session includes: a Quran verse with translation, a guided dua, and dhikr counter - apps stay locked until complete.
+                        </Text>
+
+                        {/* Session Counter */}
+                        <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24 }}>
+                                <TouchableOpacity
+                                    onPress={() => { if (reminderSessionCount > 1) setReminderSessionCount(reminderSessionCount - 1); }}
+                                    style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: '#ddd', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                    <Text style={{ fontSize: 24, color: '#333' }}>−</Text>
+                                </TouchableOpacity>
+                                <Text style={{ fontSize: 36, fontWeight: '700', color: '#111', minWidth: 40, textAlign: 'center' }}>{reminderSessionCount}</Text>
+                                <TouchableOpacity
+                                    onPress={() => { if (reminderSessionCount < 10) setReminderSessionCount(reminderSessionCount + 1); }}
+                                    style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: '#ddd', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                    <Text style={{ fontSize: 24, color: '#333' }}>+</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <Text style={{ fontSize: 13, color: '#888', marginTop: 6 }}>sessions per day (1–10)</Text>
+                        </View>
+
+                        {/* Session Times */}
+                        <View style={{ marginTop: 16, borderRadius: 12, borderWidth: 1, borderColor: '#eee', overflow: 'hidden' }}>
+                            {sessionSlots31.map((time, i) => (
+                                <TouchableOpacity
+                                    key={i}
+                                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: i < sessionSlots31.length - 1 ? 1 : 0, borderBottomColor: '#eee', backgroundColor: '#fff' }}
+                                    onPress={() => {
+                                        setEditingReminderSessionIndex(i);
+                                        setTempReminderPickerTime(time);
+                                        setShowReminderTimePicker(true);
+                                    }}
+                                >
+                                    <Text style={{ fontSize: 15, color: '#111' }}>Session {i + 1}</Text>
+                                    <Text style={{ fontSize: 15, color: '#555' }}>{formatNotificationTime(time.hour, time.minute)}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <Text style={[styles.finePrint, { marginTop: 12 }]}>
+                            Tip: Try morning after Fajr, midday, and evening before bed for best results.
+                        </Text>
+                        <Text style={[styles.finePrint, { marginTop: 6 }]}>
+                            Takes less than 2 minutes per session. You can change these anytime in Settings → Manage Sessions.
+                        </Text>
+
+                        <PremiumButton
+                            title="Continue"
+                            style={{ marginTop: 24, marginBottom: 40 }}
+                            onPress={async () => {
+                                try {
+                                    const trimmedTimes = sessionSlots31;
+                                    await AsyncStorage.setItem('@reminder_sessions_enabled', 'true');
+                                    await AsyncStorage.setItem('@reminder_session_count', String(reminderSessionCount));
+                                    await AsyncStorage.setItem('@reminder_session_times', JSON.stringify(trimmedTimes));
+                                    const newContent = generateReminderSessionContent(reminderSessionCount);
+                                    setReminderSessionContent(newContent);
+                                    await AsyncStorage.setItem('@reminder_session_content', JSON.stringify(newContent));
+                                    await AsyncStorage.setItem('@reminder_session_content_date', new Date().toISOString().split('T')[0]);
+                                    await scheduleReminderLocks(trimmedTimes);
+                                } catch (e) {
+                                    console.error('Onboarding session setup error:', e);
+                                }
+                                next();
+                            }}
+                        />
+                    </ScrollView>
+                </SafeAreaView>
+
+                {/* Time Picker Modal */}
+                <Modal visible={showReminderTimePicker} transparent animationType="slide">
+                    <View style={styles.timePickerOverlay}>
+                        <View style={styles.timePickerContainer}>
+                            <View style={styles.timePickerHeader}>
+                                <Text style={styles.timePickerTitle}>Session {editingReminderSessionIndex !== null ? editingReminderSessionIndex + 1 : ''} Time</Text>
+                                <TouchableOpacity onPress={() => {
+                                    if (editingReminderSessionIndex === null) return;
+                                    const updated = Array.from({ length: Math.max(reminderSessionTimes.length, editingReminderSessionIndex + 1) }, (_, i) => reminderSessionTimes[i] || { hour: 8, minute: 0 });
+                                    updated[editingReminderSessionIndex] = { ...tempReminderPickerTime };
+                                    setReminderSessionTimes(updated);
+                                    setShowReminderTimePicker(false);
+                                    setEditingReminderSessionIndex(null);
+                                }}>
+                                    <Text style={{ color: COLORS.black, fontWeight: '700', fontSize: 16 }}>Done</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <DateTimePicker
+                                value={(() => { const d = new Date(); d.setHours(tempReminderPickerTime.hour, tempReminderPickerTime.minute, 0, 0); return d; })()}
+                                mode="time"
+                                display="spinner"
+                                onChange={(_event, selectedDate) => {
+                                    if (selectedDate) setTempReminderPickerTime({ hour: selectedDate.getHours(), minute: selectedDate.getMinutes() });
+                                }}
+                            />
+                        </View>
+                    </View>
+                </Modal>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 32: Final Summary Cards
+    if (!isAppReady && screenIndex === 32) {
+        return (
+            <ScreenTransition>
+                <SafeAreaView style={styles.safeContainer}>
+                    <Header current={33} total={34} onBack={back} />
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                        <Text style={styles.heading}>you're almost ready, {userData.name}!</Text>
+                        <Text style={[styles.subheading, { marginTop: 8 }]}>Here's what Deen Taqwa will do for you:</Text>
+
+                        <View style={styles.instructionCardsContainer}>
+                            <Card style={styles.instructionCard}>
+                                <View style={styles.instructionIconContainer}>
+                                    <Ionicons name="business" size={28} color={COLORS.accent} />
+                                </View>
+                                <View style={styles.instructionTextContainer}>
+                                    <Text style={styles.instructionTitle}>🕌 Prayer Lock</Text>
+                                    <Text style={styles.instructionDescription}>
+                                        Apps lock at each of the 5 daily prayer times
+                                    </Text>
+                                </View>
+                            </Card>
+
+                            <Card style={styles.instructionCard}>
+                                <View style={styles.instructionIconContainer}>
+                                    <Ionicons name="checkmark-circle" size={28} color={COLORS.accent} />
+                                </View>
+                                <View style={styles.instructionTextContainer}>
+                                    <Text style={styles.instructionTitle}>📿 Spiritual Sessions</Text>
+                                    <Text style={styles.instructionDescription}>
+                                        {reminderSessionCount} daily spiritual session{reminderSessionCount !== 1 ? 's' : ''}: Quran verses, duas, and dhikr
+                                    </Text>
+                                </View>
+                            </Card>
+
+                            <Card style={styles.instructionCard}>
+                                <View style={styles.instructionIconContainer}>
+                                    <Ionicons name="bar-chart" size={28} color={COLORS.accent} />
+                                </View>
+                                <View style={styles.instructionTextContainer}>
+                                    <Text style={styles.instructionTitle}>📊 Track Progress</Text>
+                                    <Text style={styles.instructionDescription}>
+                                        See your prayer streaks and spiritual growth
+                                    </Text>
+                                </View>
+                            </Card>
+
+                            <Card style={styles.instructionCard}>
+                                <View style={styles.instructionIconContainer}>
+                                    <Ionicons name="trophy" size={28} color="#FF9500" />
+                                </View>
+                                <View style={styles.instructionTextContainer}>
+                                    <Text style={styles.instructionTitle}>⭐ Build Blessed Habits</Text>
+                                    <Text style={styles.instructionDescription}>
+                                        Small daily acts that add up to a lifetime of reward
+                                    </Text>
+                                </View>
+                            </Card>
+                        </View>
+
+                        <PremiumButton title="Continue" onPress={next} style={{ marginTop: 24, marginBottom: 40 }} />
+                    </ScrollView>
+                </SafeAreaView>
+            </ScreenTransition>
+        );
+    }
+
+    // Screen 33: Final Success
+    if (!isAppReady && screenIndex === 33) {
         return (
             <ScreenTransition>
                 <SafeAreaView style={styles.safeContainer}>
                     <View style={styles.content}>
                         <Animated.View entering={FadeIn} style={{ flex: 1 }}>
                             <Text style={styles.successBadge}>MashaAllah</Text>
-                            <Text style={styles.heading}>You're all set, {userData.name}</Text>
-                            <Card style={{ padding: 24, marginTop: 40 }}>
+                            <Text style={styles.heading}>MashaAllah, you're all set!</Text>
+                            <Text style={[styles.subheading, { marginTop: 8 }]}>
+                                {userData.name}, your journey to consistent prayer, Quran, dhikr, and spiritual growth starts now.
+                            </Text>
+                            <Card style={{ padding: 24, marginTop: 32 }}>
                                 <View style={styles.successRow}>
-                                    <Ionicons name="checkmark-circle" size={24} color={COLORS.accent} />
-                                    <Text style={styles.successText}>Prayer times configured</Text>
+                                    <Text style={{ fontSize: 18, marginRight: 10 }}>🕌</Text>
+                                    <Text style={styles.successText}>Prayer locks active for 5 daily prayers</Text>
                                 </View>
                                 <View style={styles.successRow}>
-                                    <Ionicons name="checkmark-circle" size={24} color={COLORS.accent} />
-                                    <Text style={styles.successText}>Screen Time enabled</Text>
+                                    <Text style={{ fontSize: 18, marginRight: 10 }}>📿</Text>
+                                    <Text style={styles.successText}>{reminderSessionCount} spiritual session{reminderSessionCount !== 1 ? 's' : ''} scheduled</Text>
                                 </View>
-                                <View style={styles.dividerLarge} />
-                                <Text style={styles.nextPrayerLabel}>Next prayer:</Text>
-                                <Text style={styles.nextPrayerValue}>Dhuhr at 12:06 PM</Text>
+                                <View style={styles.successRow}>
+                                    <Text style={{ fontSize: 18, marginRight: 10 }}>📷</Text>
+                                    <Text style={styles.successText}>Prayer Detection {prayerVerificationMethod === 'detection' ? 'enabled' : 'disabled'}</Text>
+                                </View>
                             </Card>
                             <View style={styles.spacer} />
                             <PremiumButton
                                 title="Begin Your Journey"
                                 onPress={async () => {
-                                    await showPaywall('onboarding_complete');
-                                    await completeOnboarding();
+                                    await showPaywall('onboarding_complete', async () => {
+                                        await completeOnboarding();
+                                    });
                                 }}
                             />
                         </Animated.View>
@@ -3351,8 +3851,9 @@ function AppContent() {
         );
     }
 
+
     // --- DASHBOARD ---
-    if (isAppReady || screenIndex > 28) {
+    if (isAppReady || screenIndex > 33) {
         return (
             <SafeAreaView style={styles.safeContainer}>
                 {isChangingLocation ? (
@@ -3370,7 +3871,7 @@ function AppContent() {
                     </View>
                 )}
 
-                {/* Daily Spiritual Reminder Full Screen Modal */}
+                {/* Daily Dhikr Reminder Full Screen Modal */}
                 {showDailyReminder && todaysDailyContent && (
                     <DailySpiritualReminder
                         content={todaysDailyContent}
@@ -3382,7 +3883,6 @@ function AppContent() {
                 {showPrayerDetection && (
                     <PrayerDetectionScreen
                         onComplete={() => { setShowPrayerDetection(false); handleIHavePrayed(); }}
-                        onManualUnlock={() => { setShowPrayerDetection(false); handleIHavePrayed(); }}
                     />
                 )}
 
@@ -3854,7 +4354,7 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.demi,
         color: COLORS.black,
     },
-    // Daily Spiritual Reminder styles
+    // Daily Dhikr Reminder styles
     reminderSection: {
         backgroundColor: COLORS.offWhite,
         borderRadius: 16,
@@ -5475,7 +5975,7 @@ const styles = StyleSheet.create({
         color: COLORS.secondaryText,
         marginTop: 4,
     },
-    // Daily Spiritual Reminders screen styles
+    // Daily Dhikr Reminders screen styles
     reminderCard: {
         flexDirection: 'row',
         alignItems: 'center',

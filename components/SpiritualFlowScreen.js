@@ -185,7 +185,7 @@ const SpiritualFlowScreen = ({ content, onComplete, autoComplete = false }) => {
       <SafeAreaView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Spiritual Journey</Text>
+          <Text style={styles.headerTitle}>Dhikr Journey</Text>
           <Text style={styles.headerSubtitle}>
             Read, reflect, and remember
           </Text>

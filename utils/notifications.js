@@ -54,7 +54,7 @@ export const scheduleDailyNotification = async (hour, minute) => {
     // Schedule the notification to repeat daily at the specified time
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
-        title: "Daily Spiritual Reminder",
+        title: "Daily Dhikr Reminder",
         body: "Your daily Quran verse, dua, and dhikr are ready",
         data: { type: 'daily_spiritual_reminder' },
         sound: true,
@@ -216,7 +216,7 @@ export const scheduleMultipleReminderNotifications = async (sessions) => {
       const { hour, minute } = sessions[i];
       const id = await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Daily Spiritual Reminder',
+          title: 'Daily Dhikr Reminder',
           body: 'Your Quran verse, dua, and dhikr are ready',
           data: { type: 'daily_spiritual_reminder', sessionIndex: i },
           sound: true,

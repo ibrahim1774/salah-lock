@@ -124,9 +124,6 @@ const PrayerDetectionScreen = ({ onComplete, onManualUnlock }) => {
           <TouchableOpacity style={styles.primaryButton} onPress={requestPermission}>
             <Text style={styles.primaryButtonText}>Allow Camera</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.manualButton} onPress={onManualUnlock}>
-            <Text style={styles.manualButtonText}>Use Manual Unlock Instead</Text>
-          </TouchableOpacity>
         </SafeAreaView>
       </View>
     );
@@ -184,9 +181,6 @@ const PrayerDetectionScreen = ({ onComplete, onManualUnlock }) => {
               <Text style={styles.confirmButtonText}>Looks Good</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.manualButton} onPress={onManualUnlock}>
-            <Text style={styles.manualButtonText}>Use Manual Unlock Instead</Text>
-          </TouchableOpacity>
         </SafeAreaView>
       </View>
     );
@@ -219,9 +213,6 @@ const PrayerDetectionScreen = ({ onComplete, onManualUnlock }) => {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.manualButton} onPress={onManualUnlock}>
-          <Text style={styles.manualButtonText}>Use Manual Unlock Instead</Text>
-        </TouchableOpacity>
       </SafeAreaView>
     </View>
   );
@@ -345,15 +336,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
-  },
-  manualButton: {
-    alignItems: 'center',
-    paddingVertical: 14,
-    marginBottom: 4,
-  },
-  manualButtonText: {
-    fontSize: 14,
-    color: '#aaa',
   },
   analyzingText: {
     fontSize: 16,
